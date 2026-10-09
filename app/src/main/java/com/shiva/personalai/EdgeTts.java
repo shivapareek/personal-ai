@@ -30,8 +30,8 @@ public class EdgeTts {
     public static final String VOICE_EN = "en-IN-NeerjaNeural";
 
     private static final String TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
-    private static final String CHROME_FULL = "130.0.2849.68";
-    private static final String CHROME_MAJOR = "130";
+    private static final String CHROME_FULL = "143.0.3650.75";
+    private static final String CHROME_MAJOR = "143";
     private static final String WSS = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1";
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -39,10 +39,10 @@ public class EdgeTts {
             .build();
 
     public static byte[] synthesize(String text, String voice) throws Exception {
-        return synthesize(text, voice, 0);
+        return synthesize(text, voice, 0, false);
     }
 
-    private static byte[] synthesize(String text, String voice, long clockSkewSec) throws Exception {
+    private static byte[] synthesize(String text, String voice, long clockSkewSec, boolean retried) throws Exception {
         String url = WSS + "?TrustedClientToken=" + TOKEN
                 + "&Sec-MS-GEC=" + secMsGec(clockSkewSec)
                 + "&Sec-MS-GEC-Version=1-" + CHROME_FULL
@@ -54,7 +54,9 @@ public class EdgeTts {
                 .header("Origin", "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold")
                 .header("Pragma", "no-cache")
                 .header("Cache-Control", "no-cache")
+                .header("Accept-Encoding", "gzip, deflate, br, zstd")
                 .header("Accept-Language", "en-US,en;q=0.9")
+                .header("Cookie", "muid=" + muid() + ";")
                 .build();
 
         final ByteArrayOutputStream audio = new ByteArrayOutputStream();
@@ -114,9 +116,9 @@ public class EdgeTts {
         }
         if (error.get() != null) {
             // 403 usually means our clock differs from the server's: retry once with the server's time.
-            if (httpCode.get() == 403 && clockSkewSec == 0 && serverDate.get() != null) {
+            if (httpCode.get() == 403 && !retried && serverDate.get() != null) {
                 long serverSec = parseHttpDate(serverDate.get());
-                if (serverSec > 0) return synthesize(text, voice, serverSec - System.currentTimeMillis() / 1000);
+                if (serverSec > 0) return synthesize(text, voice, serverSec - System.currentTimeMillis() / 1000, true);
             }
             throw new Exception("Edge TTS failed (HTTP " + httpCode.get() + "): " + error.get().getMessage(), error.get());
         }
@@ -179,6 +181,10 @@ public class EdgeTts {
 
     private static String uuid() {
         return UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private static String muid() {
+        return uuid().toUpperCase(Locale.US);
     }
 
     /** Smoke test from a plain JVM: java EdgeTts "<text>" out.mp3 [voice] */

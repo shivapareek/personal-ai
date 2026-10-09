@@ -37,6 +37,13 @@ jobs:
             -d '{"model":"openai","messages":[{"role":"user","content":"Reply with the single word OK"}]}' | head -c 600
           echo
 
+      - name: Smoke test neural voice with reference edge-tts library (informational)
+        continue-on-error: true
+        run: |
+          pip install -q edge-tts
+          edge-tts --text "नमस्ते" --voice hi-IN-SwaraNeural --write-media /tmp/ref.mp3
+          ls -la /tmp/ref.mp3
+
       - name: Smoke test neural voice (EdgeTts.java on plain JVM, informational)
         continue-on-error: true
         run: |

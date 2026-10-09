@@ -1,59 +1,41 @@
 # Personal AI (Android)
 
-Ek chhota sa Android app jo ek ladki ki awaaz me aapse baar-baar baat karta hai:
+Ek personal AI companion app: ek ladki ki asli jaisi awaaz me wo khud aapse baat karti hai, aapka khayal
+rakhti hai, career ke baare me puchti hai aur aapki todo list follow-up karti hai.
 
-- **Care**: "Aap kaise ho? Aap theek ho? Paani piya?"
-- **Career**: "Aaj aapne kya seekha?" (aapka jawab app me save hota hai)
-- **Todo**: aapki todo list bolti hai aur puchti hai "konsa kaam ho gaya, konsa nahi?" aur aapke bolne par tick kar deti hai
+- **Khud puchti hai** (auto check-in har 30 min, time aap set karo): "Aap kaise ho?", "Aaj kya seekha?",
+  "Ye kaam baaki hain, konsa ho gaya?"
+- **Aapka jawab sunti hai** (mic) aur AI se natural reply deti hai, baat aage badhati hai, pichhli baatein yaad rakhti hai
+- **Todo list** bolne par tick ho jaati hai ("pehla ho gaya", "gym done")
+- **Mic dabao** aur kuch bhi baat karo
+- **Asli neural voice** (Microsoft Edge ki free Swara / Neerja voice), net na ho to phone ki voice
+- **Free AI** bina key ke (Pollinations). Behtar AI ke liye Groq ki free key (optional)
+- Modern dark UI, chat history, "aaj kya seekha" log
 
-Sab kuch **bina AI ke** chalta hai (phone ka built-in Text-to-Speech aur Speech Recognition, free).
-AI sirf optional hai: free Groq API key dalne par wo aapke jawab ko samajh kar natural reply degi.
-
-## APK kahan se milega
+## APK
 
 Har push par GitHub Actions APK build karke **Releases** me daal deta hai:
+`https://github.com/shivapareek/personal-ai/releases` → latest → **PersonalAI.apk**
 
-1. Repo ke **Releases** page par jao: `https://github.com/shivapareek/personal-ai/releases`
-2. Latest release me **PersonalAI.apk** download karo
-3. Phone me install karo ("Unknown sources / Is source se install allow karo" on karna padega)
+## Setup
 
-Manually build karne ke liye: **Actions** tab → **Build APK** → **Run workflow**.
+1. Install karo, mic + notification permission do
+2. Pehli baar Settings khulegi: apna naam, uska naam, bhasha. **Save**
+3. Home par **Auto check-in** switch on karo. Battery optimization band karne ka popup aaye to **Allow**
+4. Wo turant hello bolegi. Mic dabao aur jawab do. **Check-in** button se kabhi bhi test karo
+5. Todo me kaam add karo
 
-## Setup (phone me)
+Phone me Google app / Speech Services hona chahiye (speech recognition ke liye), aur Hindi offline voice
+ke liye Settings → Languages → Text-to-speech → Google → Hindi voice data.
 
-1. App kholo, **mic** aur **notification** permission allow karo
-2. **Settings** me:
-   - apna naam likho
-   - bhasha chuno (Hindi / English)
-   - **Voice** dropdown me alag-alag voices **"Voice test karo"** se suno aur jo ladki ki awaaz ho wo chun lo
-     (Google TTS me `hi-in-x-hia`, `hi-in-x-hid` jaise naam hote hain; test karke dekho)
-   - kitne minute me puche (default 60) aur kis time se kis time tak (default 8 se 22)
-   - **"Battery optimization band karo"** zaroor dabao, warna phone service ko maar deta hai
-   - Save
-3. Main screen par todo list me kaam add karo
-4. **Start** dabao. **"Abhi puchho"** se turant test kar sakte ho.
+## Technical
 
-Phone me **Google Text-to-speech** (Speech Services by Google) hona chahiye aur Hindi voice data download hona chahiye
-(Phone Settings → System → Languages → Text-to-speech → Google → Install voice data → Hindi).
+- Koi androidx nahi, sirf Android framework + OkHttp
+- `CheckInService` – foreground service, AlarmManager schedule, conversation loop (bolna → sunna → sochna)
+- `Speaker` – online neural TTS (`EdgeTts`, MP3 cache) + device TTS fallback
+- `AiClient` – OpenAI-compatible chat (Pollinations free by default, Groq with key), persona + memory + JSON output
+- `ReplyParser` / `Messages` – bina AI ke fallback
+- `Store` – settings, todos, learnings, chat history (SharedPreferences)
 
-## Free AI (optional)
-
-1. https://console.groq.com par free account banao → **API Keys** → key banao (`gsk_...`)
-2. App Settings me **API key** me paste karo, Save
-3. Default model `llama-3.3-70b-versatile` aur URL Groq ka hai. Koi bhi OpenAI-compatible endpoint
-   (OpenRouter ke free models, etc.) use kar sakte ho URL/model badal kar.
-
-Key khali rakhoge to app fixed sentences bolta hai aur todo ka jawab simple rules se samajhta hai
-("pehla ho gaya", "2 aur 3 done", "sab ho gaya", task ka naam bolna, etc.).
-
-## Kaise kaam karta hai
-
-- `CheckInService` – foreground service; `AlarmManager` se har interval par jagta hai, TTS se bolta hai,
-  `SpeechRecognizer` se sunta hai, todo update karta hai
-- `Messages` – saare Hindi/English sentences
-- `ReplyParser` – bina AI ke "konsa kaam ho gaya" samajhna
-- `AiClient` – optional OpenAI-compatible chat call (Groq default)
-- `Store` – settings, todo list, "aaj kya seekha" log (SharedPreferences)
-
-Koi external library nahi, sirf Android framework. `keystore/personal-ai.jks` sirf personal install ke liye hai
-taaki har build ka signature same rahe aur update install ho sake.
+Edge neural voice aur Pollinations dono unofficial/free services hain; band ho jayein to app device voice
+aur fixed sentences par chalti rehti hai. `keystore/personal-ai.jks` sirf personal install ke liye hai.

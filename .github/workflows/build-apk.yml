@@ -29,6 +29,24 @@ jobs:
           ./gradlew assembleRelease --no-daemon --stacktrace
           cp app/build/outputs/apk/release/app-release.apk PersonalAI.apk
 
+      - name: Smoke test free AI endpoint (informational)
+        continue-on-error: true
+        run: |
+          curl -sS --max-time 60 -X POST https://text.pollinations.ai/openai \
+            -H "Content-Type: application/json" \
+            -d '{"model":"openai","messages":[{"role":"user","content":"Reply with the single word OK"}]}' | head -c 600
+          echo
+
+      - name: Smoke test neural voice (EdgeTts.java on plain JVM, informational)
+        continue-on-error: true
+        run: |
+          JARS=$(find ~/.gradle/caches/modules-2 -name 'okhttp-4.12.0.jar' -o -name 'okio-jvm-*.jar' -o -name 'kotlin-stdlib-*.jar' | tr '\n' ':')
+          mkdir -p /tmp/edge
+          javac -encoding UTF-8 -d /tmp/edge -cp "$JARS" app/src/main/java/com/shiva/personalai/EdgeTts.java
+          java -cp "/tmp/edge:$JARS" com.shiva.personalai.EdgeTts "नमस्ते! मैं आपकी पर्सनल साथी हूँ।" /tmp/edge/hi.mp3 hi-IN-SwaraNeural
+          file /tmp/edge/hi.mp3
+          ls -la /tmp/edge/hi.mp3
+
       - uses: actions/upload-artifact@v4
         with:
           name: PersonalAI-apk
@@ -38,7 +56,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v1.0-build${{ github.run_number }}"
+          TAG="v2.0-build${{ github.run_number }}"
           gh release create "$TAG" PersonalAI.apk \
             --repo "${{ github.repository }}" \
             --title "Personal AI APK (build ${{ github.run_number }})" \

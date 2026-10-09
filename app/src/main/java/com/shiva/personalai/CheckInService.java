@@ -19,9 +19,6 @@ import android.os.PowerManager;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
-import android.speech.tts.TextToSpeech;
-import android.speech.tts.UtteranceProgressListener;
-import android.speech.tts.Voice;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -31,45 +28,44 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Foreground service that periodically speaks to the user (female TTS voice), listens to the answer,
- * updates the todo list and schedules the next check-in with AlarmManager.
+ * Foreground service: starts conversations on a schedule (care / career / todo), speaks with the
+ * neural voice, listens to the answer, thinks with the AI (or fixed rules when offline), updates the
+ * todo list and keeps a chat history the UI shows.
  */
-public class CheckInService extends Service implements TextToSpeech.OnInitListener {
+public class CheckInService extends Service {
 
-    public static final String ACTION_START = "com.shiva.personalai.START";
+    public static final String ACTION_START = "com.shiva.personalai.START";          // turn on (+ greet)
     public static final String ACTION_STOP = "com.shiva.personalai.STOP";
-    public static final String ACTION_CHECK_IN = "com.shiva.personalai.CHECK_IN"; // "abhi puchho" button
-    public static final String ACTION_ALARM = "com.shiva.personalai.ALARM";       // scheduled
+    public static final String ACTION_CHECK_IN = "com.shiva.personalai.CHECK_IN";    // "check-in now" button
+    public static final String ACTION_ALARM = "com.shiva.personalai.ALARM";          // scheduled
+    public static final String ACTION_TALK = "com.shiva.personalai.TALK";            // mic button
+    public static final String ACTION_RESCHEDULE = "com.shiva.personalai.RESCHEDULE";// settings saved
+    public static final String EXTRA_GREET = "greet";
 
     private static final String CHANNEL = "personalai";
     private static final int NOTIF_ID = 1;
-    private static final String UTT_ASK = "ask";
-    private static final String UTT_REPLY = "reply";
+    private static final int MAX_TURNS = 4;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private Store store;
-    private TextToSpeech tts;
-    private boolean ttsReady;
+    private Speaker speaker;
     private boolean micAllowed;
     private SpeechRecognizer recognizer;
     private PowerManager.WakeLock wakeLock;
+
     private boolean busy;
-    private int currentType;
-    private String currentQuestion = "";
-    private List<String> currentPending = new ArrayList<>();
-    private long nextAt;
+    private int mode;
+    private int turn;
+    private int convo;
+    private List<String> pending = new ArrayList<>();
 
     @Override
     public void onCreate() {
         super.onCreate();
         store = new Store(this);
+        speaker = new Speaker(this, store);
         createChannel();
-        tts = new TextToSpeech(this, this);
-        tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override public void onStart(String id) { }
-            @Override public void onDone(String id) { main.post(() -> onSpoken(id)); }
-            @Override public void onError(String id) { main.post(() -> onSpoken(id)); }
-        });
+        store.setState("idle");
     }
 
     @Override
@@ -77,17 +73,31 @@ public class CheckInService extends Service implements TextToSpeech.OnInitListen
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
             store.setServiceOn(false);
+            store.setNextAt(0);
             cancelAlarm();
+            endConversation();
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             return START_NOT_STICKY;
         }
         goForeground();
         store.setServiceOn(true);
-        if (ACTION_CHECK_IN.equals(action) || (ACTION_ALARM.equals(action) && withinActiveHours())) {
-            runCheckIn();
+
+        if (ACTION_TALK.equals(action)) {
+            beginTalk();
+        } else if (ACTION_CHECK_IN.equals(action)) {
+            beginCheckIn(store.nextTypeAndAdvance());
+            scheduleNext();
+        } else if (ACTION_ALARM.equals(action)) {
+            if (!busy && withinActiveHours()) beginCheckIn(store.nextTypeAndAdvance());
+            scheduleNext();
+        } else if (ACTION_RESCHEDULE.equals(action)) {
+            scheduleNext();
+        } else { // ACTION_START
+            if (intent != null && intent.getBooleanExtra(EXTRA_GREET, false)) beginCheckIn(Messages.TYPE_CARE);
+            if (store.nextAt() < System.currentTimeMillis()) scheduleNext();
+            else updateNotification();
         }
-        scheduleNext();
         return START_STICKY;
     }
 
@@ -96,76 +106,72 @@ public class CheckInService extends Service implements TextToSpeech.OnInitListen
 
     @Override
     public void onDestroy() {
-        destroyRecognizer();
-        if (tts != null) tts.shutdown();
-        releaseWakeLock();
+        endConversation();
+        speaker.shutdown();
+        store.setState("idle");
         super.onDestroy();
     }
 
-    // ---------- TTS ----------
+    // ---------- conversation flow ----------
 
-    @Override
-    public void onInit(int status) {
-        if (status != TextToSpeech.SUCCESS) return;
-        applyVoice();
-        ttsReady = true;
-    }
-
-    private void applyVoice() {
-        Locale locale = store.hindi() ? new Locale("hi", "IN") : new Locale("en", "IN");
-        try {
-            tts.setLanguage(locale);
-            String wanted = store.voiceName();
-            if (!wanted.isEmpty() && tts.getVoices() != null) {
-                for (Voice v : tts.getVoices()) {
-                    if (wanted.equals(v.getName())) { tts.setVoice(v); break; }
-                }
-            }
-        } catch (Exception ignored) {
-        }
-    }
-
-    private void speak(String text, String utteranceId) {
-        speak(text, utteranceId, 0);
-    }
-
-    private void speak(String text, String utteranceId, int attempt) {
-        if (!ttsReady) {
-            if (attempt < 10) main.postDelayed(() -> speak(text, utteranceId, attempt + 1), 1000);
-            else finishCheckIn();
-            return;
-        }
-        int r = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
-        if (r != TextToSpeech.SUCCESS) finishCheckIn();
-    }
-
-    private void onSpoken(String utteranceId) {
-        if (UTT_ASK.equals(utteranceId)) {
-            if (store.listen() && micAllowed && hasMicPermission() && SpeechRecognizer.isRecognitionAvailable(this)) {
-                startListening();
-            } else {
-                finishCheckIn();
-            }
-        } else if (UTT_REPLY.equals(utteranceId)) {
-            finishCheckIn();
-        }
-    }
-
-    // ---------- check-in flow ----------
-
-    private void runCheckIn() {
+    private void beginCheckIn(int type) {
         if (busy) return;
         busy = true;
         acquireWakeLock();
-        applyVoice(); // settings may have changed
-        currentType = store.nextTypeAndAdvance();
-        currentPending = store.pendingTexts();
-        currentQuestion = Messages.checkIn(currentType, store);
-        speak(currentQuestion, UTT_ASK);
+        mode = type;
+        turn = 0;
+        pending = store.pendingTexts();
+        store.setState("thinking");
+        final int myConvo = ++convo;
+        final List<Store.Msg> history = store.messages();
+        final boolean listenAfter = !(type == Messages.TYPE_TODO && pending.isEmpty());
+        new Thread(() -> {
+            String opening;
+            try {
+                opening = AiClient.chat(store, type, pending, history, true).reply;
+            } catch (Exception e) {
+                opening = Messages.checkIn(type, store);
+            }
+            final String text = opening;
+            main.post(() -> {
+                if (myConvo == convo) say(text, listenAfter);
+            });
+        }).start();
     }
 
-    private void startListening() {
+    private void beginTalk() {
+        if (busy) {
+            // user tapped mic while she was talking: stop and listen right away
+            speaker.stop();
+            destroyRecognizer();
+        }
+        busy = true;
+        convo++;
+        acquireWakeLock();
+        mode = Messages.TYPE_TALK;
+        turn = 0;
+        pending = store.pendingTexts();
+        if (canListen()) listen();
+        else say(Messages.noReply(store), false);
+    }
+
+    private void say(String text, boolean thenListen) {
+        store.addMessage("ai", text);
+        store.setState("speaking");
+        speaker.speak(text, () -> {
+            if (thenListen && turn < MAX_TURNS && canListen()) listen();
+            else finishConversation();
+        });
+    }
+
+    private boolean canListen() {
+        return store.listen() && micAllowed && hasMicPermission() && SpeechRecognizer.isRecognitionAvailable(this);
+    }
+
+    private void listen() {
+        turn++;
         destroyRecognizer();
+        store.setState("listening");
         try {
             recognizer = SpeechRecognizer.createSpeechRecognizer(this);
             recognizer.setRecognitionListener(new RecognitionListener() {
@@ -173,14 +179,15 @@ public class CheckInService extends Service implements TextToSpeech.OnInitListen
                 @Override public void onBeginningOfSpeech() { }
                 @Override public void onRmsChanged(float rmsdB) { }
                 @Override public void onBufferReceived(byte[] buffer) { }
-                @Override public void onEndOfSpeech() { }
+                @Override public void onEndOfSpeech() { store.setState("thinking"); }
                 @Override public void onPartialResults(Bundle partialResults) { }
                 @Override public void onEvent(int eventType, Bundle params) { }
 
                 @Override
                 public void onError(int error) {
                     destroyRecognizer();
-                    speak(Messages.noReply(store), UTT_REPLY);
+                    if (mode == Messages.TYPE_TALK || turn > 1) finishConversation();
+                    else say(Messages.noReply(store), false);
                 }
 
                 @Override
@@ -188,7 +195,8 @@ public class CheckInService extends Service implements TextToSpeech.OnInitListen
                     destroyRecognizer();
                     List<String> list = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                     String text = (list == null || list.isEmpty()) ? "" : list.get(0);
-                    handleReply(text);
+                    if (text.trim().isEmpty()) finishConversation();
+                    else onUserSaid(text.trim());
                 }
             });
             Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
@@ -196,69 +204,62 @@ public class CheckInService extends Service implements TextToSpeech.OnInitListen
             i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, store.hindi() ? "hi-IN" : "en-IN");
             i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
             i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L);
             recognizer.startListening(i);
         } catch (Exception e) {
             destroyRecognizer();
-            finishCheckIn();
+            finishConversation();
         }
     }
 
-    private void destroyRecognizer() {
-        if (recognizer != null) {
-            try { recognizer.destroy(); } catch (Exception ignored) { }
-            recognizer = null;
-        }
-    }
-
-    private void handleReply(String text) {
-        if (text == null || text.trim().isEmpty()) {
-            speak(Messages.noReply(store), UTT_REPLY);
-            return;
-        }
-        if (currentType == Messages.TYPE_CAREER) store.addLearning(text);
-
-        if (store.aiEnabled()) {
-            final String question = currentQuestion;
-            final int type = currentType;
-            final List<String> pending = new ArrayList<>(currentPending);
-            new Thread(() -> {
-                try {
-                    AiClient.Result r = AiClient.ask(store, type, question, text, pending);
-                    main.post(() -> {
-                        markDone(r.done);
-                        speak(r.reply, UTT_REPLY);
-                    });
-                } catch (Exception e) {
-                    main.post(() -> localReply(text));
-                }
-            }).start();
-        } else {
-            localReply(text);
-        }
+    private void onUserSaid(String text) {
+        store.addMessage("user", text);
+        if (mode == Messages.TYPE_CAREER && turn == 1) store.addLearning(text);
+        store.setState("thinking");
+        final int myConvo = convo;
+        final List<Store.Msg> history = store.messages();
+        final int myMode = mode;
+        new Thread(() -> {
+            try {
+                AiClient.Result r = AiClient.chat(store, myMode, pending, history, false);
+                main.post(() -> {
+                    if (myConvo != convo) return;
+                    markDone(r.done);
+                    say(r.reply, r.askMore);
+                });
+            } catch (Exception e) {
+                main.post(() -> {
+                    if (myConvo == convo) localReply(text);
+                });
+            }
+        }).start();
     }
 
     /** Reply without AI: simple parsing + fixed sentences. */
     private void localReply(String text) {
         String reply;
-        if (currentType == Messages.TYPE_CARE) {
+        if (mode == Messages.TYPE_CARE) {
             reply = Messages.careReply(store);
-        } else if (currentType == Messages.TYPE_CAREER) {
+        } else if (mode == Messages.TYPE_CAREER) {
             reply = Messages.careerReply(store);
-        } else {
-            List<String> doneNow = markDone(ReplyParser.doneIndices(text, currentPending));
+        } else if (mode == Messages.TYPE_TODO) {
+            List<String> doneNow = markDone(ReplyParser.doneIndices(text, pending));
             reply = Messages.todoReply(doneNow, store.pendingTexts(), store);
+        } else {
+            List<String> doneNow = markDone(ReplyParser.doneIndices(text, pending));
+            reply = doneNow.isEmpty() ? Messages.talkOffline(store) : Messages.todoReply(doneNow, store.pendingTexts(), store);
         }
-        speak(reply, UTT_REPLY);
+        say(reply, false);
     }
 
-    /** Marks the given indices of currentPending as done. Returns the texts marked. */
+    /** Marks the given indices of `pending` as done. Returns the texts marked. */
     private List<String> markDone(List<Integer> pendingIdx) {
         List<String> marked = new ArrayList<>();
         if (pendingIdx.isEmpty()) return marked;
         List<Store.Todo> todos = store.todos();
         for (int idx : pendingIdx) {
-            if (idx < 0 || idx >= currentPending.size()) continue;
-            String text = currentPending.get(idx);
+            if (idx < 0 || idx >= pending.size()) continue;
+            String text = pending.get(idx);
             for (Store.Todo t : todos) {
                 if (!t.done && t.text.equals(text)) {
                     t.done = true;
@@ -268,14 +269,31 @@ public class CheckInService extends Service implements TextToSpeech.OnInitListen
             }
         }
         store.saveTodos(todos);
+        pending = store.pendingTexts();
         return marked;
     }
 
-    private void finishCheckIn() {
+    private void finishConversation() {
         busy = false;
         destroyRecognizer();
+        store.setState("idle");
         releaseWakeLock();
         updateNotification();
+    }
+
+    private void endConversation() {
+        speaker.stop();
+        finishConversation();
+    }
+
+    private void destroyRecognizer() {
+        if (recognizer != null) {
+            try {
+                recognizer.destroy();
+            } catch (Exception ignored) {
+            }
+            recognizer = null;
+        }
     }
 
     // ---------- scheduling ----------
@@ -311,7 +329,8 @@ public class CheckInService extends Service implements TextToSpeech.OnInitListen
     }
 
     private void scheduleNext() {
-        nextAt = computeNext();
+        long nextAt = computeNext();
+        store.setNextAt(nextAt);
         AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
         PendingIntent pi = alarmIntent();
         boolean exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms();
@@ -346,7 +365,7 @@ public class CheckInService extends Service implements TextToSpeech.OnInitListen
                     micAllowed = true;
                     return;
                 } catch (Exception ignored) {
-                    // Android 14+: microphone type cannot be started from the background.
+                    // Android 14+: microphone type cannot be started while the app is in the background.
                 }
             }
             try {
@@ -361,21 +380,22 @@ public class CheckInService extends Service implements TextToSpeech.OnInitListen
 
     private void createChannel() {
         NotificationChannel ch = new NotificationChannel(CHANNEL, "Personal AI", NotificationManager.IMPORTANCE_LOW);
-        ch.setDescription("Check-in reminders");
+        ch.setDescription("Companion check-ins");
         getSystemService(NotificationManager.class).createNotificationChannel(ch);
     }
 
     private Notification buildNotification() {
-        String next = nextAt > 0
-                ? "Agla check-in: " + new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(nextAt))
-                : "Chal raha hai";
-        if (!micAllowed && store.listen()) next += " (sunne ke liye app kholke Start dabao)";
+        long nextAt = store.nextAt();
+        String text = nextAt > 0
+                ? "Agla check-in " + new SimpleDateFormat("h:mm a", Locale.getDefault()).format(new Date(nextAt))
+                : "Online";
+        if (!micAllowed && store.listen()) text += " (sunne ke liye app ek baar kholo)";
         PendingIntent open = PendingIntent.getActivity(this, 1, new Intent(this, MainActivity.class),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(R.drawable.ic_launcher)
-                .setContentTitle("Personal AI")
-                .setContentText(next)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(store.herName() + " online hai")
+                .setContentText(text)
                 .setContentIntent(open)
                 .setOngoing(true)
                 .build();
@@ -390,9 +410,9 @@ public class CheckInService extends Service implements TextToSpeech.OnInitListen
     private void acquireWakeLock() {
         if (wakeLock == null) {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "personalai:checkin");
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "personalai:conversation");
         }
-        if (!wakeLock.isHeld()) wakeLock.acquire(3 * 60 * 1000L);
+        if (!wakeLock.isHeld()) wakeLock.acquire(5 * 60 * 1000L);
     }
 
     private void releaseWakeLock() {

@@ -8,11 +8,13 @@ import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
 import android.widget.ArrayAdapter;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.widget.SeekBar;
 import android.widget.Spinner;
+import android.widget.Switch;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
@@ -23,12 +25,15 @@ import java.util.Locale;
 public class SettingsActivity extends Activity {
 
     private Store store;
-    private EditText editName, editInterval, editStart, editEnd, editAiUrl, editAiModel, editAiKey;
+    private EditText editName, editHerName, editStart, editEnd, editAiUrl, editAiModel, editAiKey;
     private RadioButton rbHindi, rbEnglish;
     private Spinner spinnerVoice;
-    private CheckBox checkListen;
+    private Switch switchOnlineVoice, switchListen;
+    private SeekBar seekInterval;
+    private TextView textInterval;
     private TextToSpeech tts;
     private boolean ttsReady;
+    private Speaker speaker;
     private final List<Voice> voices = new ArrayList<>();
 
     @Override
@@ -36,9 +41,10 @@ public class SettingsActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
         store = new Store(this);
+        speaker = new Speaker(this, store);
 
         editName = findViewById(R.id.editName);
-        editInterval = findViewById(R.id.editInterval);
+        editHerName = findViewById(R.id.editHerName);
         editStart = findViewById(R.id.editStart);
         editEnd = findViewById(R.id.editEnd);
         editAiUrl = findViewById(R.id.editAiUrl);
@@ -47,33 +53,46 @@ public class SettingsActivity extends Activity {
         rbHindi = findViewById(R.id.rbHindi);
         rbEnglish = findViewById(R.id.rbEnglish);
         spinnerVoice = findViewById(R.id.spinnerVoice);
-        checkListen = findViewById(R.id.checkListen);
+        switchOnlineVoice = findViewById(R.id.switchOnlineVoice);
+        switchListen = findViewById(R.id.switchListen);
+        seekInterval = findViewById(R.id.seekInterval);
+        textInterval = findViewById(R.id.textInterval);
 
         editName.setText(store.name());
-        editInterval.setText(String.valueOf(store.intervalMin()));
+        editHerName.setText(store.herName());
         editStart.setText(String.valueOf(store.startHour()));
         editEnd.setText(String.valueOf(store.endHour()));
         editAiUrl.setText(store.aiUrl());
         editAiModel.setText(store.aiModel());
         editAiKey.setText(store.aiKey());
-        checkListen.setChecked(store.listen());
+        switchOnlineVoice.setChecked(store.onlineVoice());
+        switchListen.setChecked(store.listen());
         if (store.hindi()) rbHindi.setChecked(true); else rbEnglish.setChecked(true);
+
+        seekInterval.setProgress(Math.max(0, Math.min(35, (store.intervalMin() - 5) / 5)));
+        textInterval.setText("Har " + minutes() + " minute me");
+        seekInterval.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar s, int p, boolean u) { textInterval.setText("Har " + minutes() + " minute me"); }
+            @Override public void onStartTrackingTouch(SeekBar s) { }
+            @Override public void onStopTrackingTouch(SeekBar s) { }
+        });
 
         RadioGroup langGroup = findViewById(R.id.radioLang);
         langGroup.setOnCheckedChangeListener((g, id) -> loadVoices());
 
         tts = new TextToSpeech(this, status -> {
-            if (status == TextToSpeech.SUCCESS) {
-                ttsReady = true;
-                runOnUiThread(this::loadVoices);
-            } else {
-                Toast.makeText(this, "Text-to-speech engine nahi mila. Google Speech Services install karo.", Toast.LENGTH_LONG).show();
-            }
+            ttsReady = status == TextToSpeech.SUCCESS;
+            runOnUiThread(this::loadVoices);
         });
 
+        findViewById(R.id.btnBack).setOnClickListener(v -> finish());
         findViewById(R.id.btnTestVoice).setOnClickListener(v -> testVoice());
         findViewById(R.id.btnBattery).setOnClickListener(v -> requestIgnoreBattery());
         findViewById(R.id.btnSave).setOnClickListener(v -> save());
+    }
+
+    private int minutes() {
+        return 5 + seekInterval.getProgress() * 5;
     }
 
     private Locale locale() {
@@ -97,10 +116,15 @@ public class SettingsActivity extends Activity {
         Collections.sort(voices, (a, b) -> a.getName().compareTo(b.getName()));
         names.add("Default voice");
         for (Voice v : voices) names.add(v.getName());
-        spinnerVoice.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        ArrayAdapter<String> ad = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, names);
+        ad.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinnerVoice.setAdapter(ad);
         String saved = store.voiceName();
         for (int i = 0; i < voices.size(); i++) {
-            if (voices.get(i).getName().equals(saved)) { spinnerVoice.setSelection(i + 1); break; }
+            if (voices.get(i).getName().equals(saved)) {
+                spinnerVoice.setSelection(i + 1);
+                break;
+            }
         }
     }
 
@@ -110,14 +134,9 @@ public class SettingsActivity extends Activity {
     }
 
     private void testVoice() {
-        if (!ttsReady) {
-            Toast.makeText(this, "Voice engine abhi ready nahi hai", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        tts.setLanguage(locale());
-        int pos = spinnerVoice.getSelectedItemPosition();
-        if (pos > 0 && pos <= voices.size()) tts.setVoice(voices.get(pos - 1));
-        tts.speak(Messages.testVoice(store, rbHindi.isChecked()), TextToSpeech.QUEUE_FLUSH, null, "test");
+        boolean hi = rbHindi.isChecked();
+        Toast.makeText(this, switchOnlineVoice.isChecked() ? "Online voice la rahi hu..." : "Device voice", Toast.LENGTH_SHORT).show();
+        speaker.speak(Messages.testVoice(store, hi), switchOnlineVoice.isChecked(), hi, selectedVoiceName(), () -> { });
     }
 
     private void requestIgnoreBattery() {
@@ -144,17 +163,19 @@ public class SettingsActivity extends Activity {
     private void save() {
         store.saveSettings(
                 editName.getText().toString().trim(),
+                editHerName.getText().toString().trim(),
                 rbHindi.isChecked(),
-                intOf(editInterval, 60),
+                minutes(),
                 intOf(editStart, 8),
                 intOf(editEnd, 22),
+                switchOnlineVoice.isChecked(),
                 selectedVoiceName(),
-                checkListen.isChecked(),
+                switchListen.isChecked(),
                 editAiUrl.getText().toString().trim(),
                 editAiModel.getText().toString().trim(),
                 editAiKey.getText().toString().trim());
         if (store.serviceOn()) {
-            startForegroundService(new Intent(this, CheckInService.class).setAction(CheckInService.ACTION_START));
+            startForegroundService(new Intent(this, CheckInService.class).setAction(CheckInService.ACTION_RESCHEDULE));
         }
         Toast.makeText(this, "Save ho gaya", Toast.LENGTH_SHORT).show();
         finish();
@@ -162,6 +183,7 @@ public class SettingsActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        speaker.shutdown();
         if (tts != null) tts.shutdown();
         super.onDestroy();
     }

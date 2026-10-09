@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:layout_marginBottom="10dp"
+    android:background="@drawable/bg_card"
+    android:paddingStart="14dp"
+    android:paddingEnd="6dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="12dp">
+
+    <View
+        android:id="@+id/check"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:background="@drawable/bg_check_off" />
+
+    <TextView
+        android:id="@+id/text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="14dp"
+        android:textColor="@color/text"
+        android:textSize="15sp" />
+
+    <ImageButton
+        android:id="@+id/btnDelete"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_delete"
+        android:scaleType="centerInside"
+        android:contentDescription="Delete" />
+</LinearLayout>

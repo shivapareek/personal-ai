@@ -3,12 +3,13 @@ package com.shiva.personalai;
 import java.util.List;
 import java.util.Random;
 
-/** All spoken sentences (no AI). Hindi is written in Devanagari so the hi-IN voice sounds natural. */
+/** Fixed sentences used when the AI is unreachable. Hindi is in Devanagari so the voice sounds natural. */
 public class Messages {
 
     public static final int TYPE_CARE = 0;
     public static final int TYPE_CAREER = 1;
     public static final int TYPE_TODO = 2;
+    public static final int TYPE_TALK = 3;
 
     private static final Random RND = new Random();
 
@@ -95,14 +96,14 @@ public class Messages {
             b.append(hi ? "ठीक है, कोई बात नहीं। " : "Okay, no problem. ");
         } else {
             b.append(hi ? "बढ़िया! " : "Great! ");
-            b.append(String.join(hi ? ", " : ", ", doneNow));
+            b.append(String.join(", ", doneNow));
             b.append(hi ? " हो गया, मैंने टिक कर दिया। " : " is done, I have ticked it. ");
         }
         if (remaining.isEmpty()) {
             b.append(hi ? "अब सब काम हो गया, कमाल कर दिया!" : "Everything is done now, amazing!");
         } else {
             b.append(hi ? "अभी बाकी हैं: " : "Still pending: ");
-            b.append(String.join(hi ? ", " : ", ", remaining)).append(hi ? "। " : ". ");
+            b.append(String.join(", ", remaining)).append(hi ? "। " : ". ");
             b.append(hi ? "कर लेना, मैं फिर याद दिला दूँगी।" : "Do them when you can, I will remind you again.");
         }
         return b.toString();
@@ -112,9 +113,15 @@ public class Messages {
         return s.hindi() ? "ठीक है, मैं थोड़ी देर में फिर पूछूँगी।" : "Okay, I will ask again in a while.";
     }
 
+    public static String talkOffline(Store s) {
+        return s.hindi() ? "सॉरी, अभी मैं सोच नहीं पा रही। इंटरनेट चेक करो और फिर से बोलो।"
+                : "Sorry, I cannot think right now. Check the internet and talk to me again.";
+    }
+
     public static String testVoice(Store s, boolean hi) {
-        return hi ? "नमस्ते! मैं आपकी पर्सनल साथी हूँ। मैं आपका ख्याल रखूँगी।"
-                : "Hello! I am your personal companion. I will take care of you.";
+        String her = s.herName();
+        return hi ? "हाय! मैं " + her + " हूँ, आपकी अपनी साथी। मैं आपका ख्याल रखूँगी, ठीक है?"
+                : "Hi! I am " + her + ", your personal companion. I will take care of you, okay?";
     }
 
     private static String pick(String[] arr) {

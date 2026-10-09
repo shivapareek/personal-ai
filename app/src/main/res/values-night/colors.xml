@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0F1012</color>
+    <color name="surface">#17191C</color>
+    <color name="surface2">#202327</color>
+    <color name="stroke">#2B2E33</color>
+    <color name="text">#ECEDEE</color>
+    <color name="muted">#9BA1A6</color>
+    <color name="accent">#2BB3A3</color>
+    <color name="accentSoft">#15302D</color>
+    <color name="onAccent">#06201D</color>
+    <color name="danger">#F87171</color>
+    <bool name="lightBars">false</bool>
+</resources>

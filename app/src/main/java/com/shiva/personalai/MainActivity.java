@@ -1,49 +1,52 @@
 package com.shiva.personalai;
 
 import android.Manifest;
-import android.animation.ObjectAnimator;
-import android.animation.PropertyValuesHolder;
-import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
-import android.view.Gravity;
+import android.text.InputType;
 import android.view.View;
-import android.widget.ImageButton;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.Switch;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 
+/** Single-activity app with a bottom navigation bar: Home (conversation), Tasks, Journal, Settings. */
 public class MainActivity extends Activity {
 
+    public static volatile boolean visible;
+    public static final String EXTRA_REPLY = "reply";
+
     private Store store;
-    private TextView textHerName, textStatus, textNext;
-    private View dotStatus, micRing;
-    private Switch switchAuto;
-    private LinearLayout chatList;
-    private ScrollView scrollChat;
-    private ObjectAnimator pulse;
-    private int renderedCount = -1;
-    private boolean updatingSwitch;
+    private Speaker speaker;
+    private HomeTab home;
+    private TasksTab tasks;
+    private JournalTab journal;
+    private SettingsTab settings;
+    private final View[] tabs = new View[4];
+    private final View[] pills = new View[4];
+    private final ImageView[] icons = new ImageView[4];
+    private final TextView[] labels = new TextView[4];
+    private int current;
 
     private final SharedPreferences.OnSharedPreferenceChangeListener prefsListener = (p, key) -> {
-        if (Store.KEY_MESSAGES.equals(key)) renderChat();
-        else if (Store.KEY_STATE.equals(key) || Store.KEY_NEXT_AT.equals(key) || Store.KEY_SERVICE_ON.equals(key)) renderStatus();
+        if (key == null) return;
+        home.onPrefChanged(key);
+        if ("todos".equals(key)) tasks.refresh();
+        if ("learnings".equals(key)) journal.refresh();
     };
 
     @Override
@@ -51,217 +54,218 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         store = new Store(this);
+        speaker = new Speaker(this, store);
 
-        textHerName = findViewById(R.id.textHerName);
-        textStatus = findViewById(R.id.textStatus);
-        textNext = findViewById(R.id.textNext);
-        dotStatus = findViewById(R.id.dotStatus);
-        micRing = findViewById(R.id.micRing);
-        switchAuto = findViewById(R.id.switchAuto);
-        chatList = findViewById(R.id.chatList);
-        scrollChat = findViewById(R.id.scrollChat);
-        ImageButton btnMic = findViewById(R.id.btnMic);
-
-        switchAuto.setOnCheckedChangeListener((v, on) -> {
-            if (updatingSwitch) return;
-            if (on) {
-                if (!ensurePermissions()) {
-                    updatingSwitch = true;
-                    switchAuto.setChecked(false);
-                    updatingSwitch = false;
-                    return;
-                }
-                startForegroundService(serviceIntent(CheckInService.ACTION_START).putExtra(CheckInService.EXTRA_GREET, true));
-                store.setServiceOn(true);
-                askBatteryOptimization();
-            } else {
-                startService(serviceIntent(CheckInService.ACTION_STOP));
-                store.setServiceOn(false);
-            }
-            renderStatus();
-        });
-
-        btnMic.setOnClickListener(v -> {
-            if (!ensurePermissions()) return;
-            startForegroundService(serviceIntent(CheckInService.ACTION_TALK));
-        });
-
-        findViewById(R.id.btnNow).setOnClickListener(v -> {
-            if (!ensurePermissions()) return;
-            startForegroundService(serviceIntent(CheckInService.ACTION_CHECK_IN));
-        });
-
-        findViewById(R.id.btnTodo).setOnClickListener(v -> startActivity(new Intent(this, TodoActivity.class)));
-        findViewById(R.id.btnSettings).setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
-        findViewById(R.id.btnLearnings).setOnClickListener(v -> showLearnings());
-
-        textHerName.setOnLongClickListener(v -> {
-            new AlertDialog.Builder(this)
-                    .setMessage("Chat history clear karein?")
-                    .setPositiveButton("Clear", (d, w) -> store.clearMessages())
-                    .setNegativeButton("Cancel", null)
-                    .show();
-            return true;
-        });
-
-        if (!store.onboarded()) {
-            store.setOnboarded();
-            requestRuntimePermissions();
-            startActivity(new Intent(this, SettingsActivity.class));
+        tabs[0] = findViewById(R.id.tabHome);
+        tabs[1] = findViewById(R.id.tabTasks);
+        tabs[2] = findViewById(R.id.tabJournal);
+        tabs[3] = findViewById(R.id.tabSettings);
+        int[] nav = {R.id.navHome, R.id.navTasks, R.id.navJournal, R.id.navSettings};
+        int[] pill = {R.id.navHomePill, R.id.navTasksPill, R.id.navJournalPill, R.id.navSettingsPill};
+        int[] icon = {R.id.navHomeIcon, R.id.navTasksIcon, R.id.navJournalIcon, R.id.navSettingsIcon};
+        int[] label = {R.id.navHomeLabel, R.id.navTasksLabel, R.id.navJournalLabel, R.id.navSettingsLabel};
+        for (int i = 0; i < 4; i++) {
+            final int idx = i;
+            pills[i] = findViewById(pill[i]);
+            icons[i] = findViewById(icon[i]);
+            labels[i] = findViewById(label[i]);
+            findViewById(nav[i]).setOnClickListener(v -> openTab(idx));
         }
+
+        home = new HomeTab(this, tabs[0]);
+        tasks = new TasksTab(this, tabs[1]);
+        journal = new JournalTab(this, tabs[2]);
+        settings = new SettingsTab(this, tabs[3]);
+
+        openTab(savedInstanceState == null ? 0 : savedInstanceState.getInt("tab", 0));
+        if (!store.onboarded()) showOnboarding();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putInt("tab", current);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        visible = true;
         store.prefs().registerOnSharedPreferenceChangeListener(prefsListener);
-        textHerName.setText(store.herName());
-        renderedCount = -1;
-        renderChat();
-        renderStatus();
-        // Re-sending START while the app is visible lets the service (re)gain microphone access.
-        if (store.serviceOn() && hasMic()) startForegroundService(serviceIntent(CheckInService.ACTION_START));
+        home.refresh();
+        tasks.refresh();
+        journal.refresh();
+        settings.refresh();
+        // While the app is on screen the service may (re)acquire microphone access for background replies.
+        if (store.serviceOn()) CheckInService.send(this, CheckInService.ACTION_RESTART);
+        handleIntent(getIntent());
     }
 
     @Override
     protected void onPause() {
+        visible = false;
         store.prefs().unregisterOnSharedPreferenceChangeListener(prefsListener);
         super.onPause();
     }
 
-    private Intent serviceIntent(String action) {
-        return new Intent(this, CheckInService.class).setAction(action);
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
     }
 
-    // ---------- rendering ----------
-
-    private void renderStatus() {
-        boolean on = store.serviceOn();
-        String state = store.state();
-        updatingSwitch = true;
-        switchAuto.setChecked(on);
-        updatingSwitch = false;
-
-        String status;
-        if ("listening".equals(state)) status = "Sun rahi hai...";
-        else if ("thinking".equals(state)) status = "Soch rahi hai...";
-        else if ("speaking".equals(state)) status = "Bol rahi hai...";
-        else status = on ? "Online" : "Offline";
-        textStatus.setText(status);
-        dotStatus.setAlpha(on ? 1f : 0.3f);
-
-        long nextAt = store.nextAt();
-        if (!on) textNext.setText("Band hai. On karo, wo khud puchegi.");
-        else if (nextAt > 0) textNext.setText("Har " + store.intervalMin() + " min. Agla: "
-                + new SimpleDateFormat("h:mm a", Locale.getDefault()).format(new Date(nextAt)));
-        else textNext.setText("Har " + store.intervalMin() + " min");
-
-        if ("listening".equals(state)) startPulse();
-        else stopPulse("speaking".equals(state) || "thinking".equals(state) ? 0.5f : 0f);
+    @Override
+    protected void onDestroy() {
+        speaker.shutdown();
+        settings.destroy();
+        super.onDestroy();
     }
 
-    private void startPulse() {
-        if (pulse != null && pulse.isRunning()) return;
-        micRing.setAlpha(1f);
-        pulse = ObjectAnimator.ofPropertyValuesHolder(micRing,
-                PropertyValuesHolder.ofFloat(View.SCALE_X, 0.9f, 1.25f),
-                PropertyValuesHolder.ofFloat(View.SCALE_Y, 0.9f, 1.25f),
-                PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0.3f));
-        pulse.setDuration(900);
-        pulse.setRepeatMode(ValueAnimator.REVERSE);
-        pulse.setRepeatCount(ValueAnimator.INFINITE);
-        pulse.start();
-    }
-
-    private void stopPulse(float alpha) {
-        if (pulse != null) {
-            pulse.cancel();
-            pulse = null;
+    private void handleIntent(Intent i) {
+        if (i != null && i.getBooleanExtra(EXTRA_REPLY, false)) {
+            i.removeExtra(EXTRA_REPLY);
+            openTab(0);
+            talk(null);
         }
-        micRing.setScaleX(1f);
-        micRing.setScaleY(1f);
-        micRing.setAlpha(alpha);
     }
 
-    private void renderChat() {
-        List<Store.Msg> msgs = store.messages();
-        if (msgs.size() == renderedCount) return;
-        renderedCount = msgs.size();
-        chatList.removeAllViews();
-        if (msgs.isEmpty()) {
-            TextView empty = new TextView(this);
-            empty.setText("Auto check-in on karo, " + store.herName() + " khud aapse baat karegi.\nYa mic dabao aur kuch bhi bolo.");
-            empty.setTextColor(getColor(R.color.muted));
-            empty.setGravity(Gravity.CENTER);
-            empty.setPadding(0, dp(60), 0, 0);
-            chatList.addView(empty);
-            return;
+    // ---------- navigation ----------
+
+    void openTab(int i) {
+        current = i;
+        int accent = getColor(R.color.accent);
+        int muted = getColor(R.color.muted);
+        for (int j = 0; j < 4; j++) {
+            boolean sel = j == i;
+            tabs[j].setVisibility(sel ? View.VISIBLE : View.GONE);
+            pills[j].setBackgroundResource(sel ? R.drawable.bg_nav_pill : 0);
+            icons[j].setImageTintList(ColorStateList.valueOf(sel ? accent : muted));
+            labels[j].setTextColor(sel ? getColor(R.color.text) : muted);
         }
-        int maxWidth = (int) (getResources().getDisplayMetrics().widthPixels * 0.78f);
-        int from = Math.max(0, msgs.size() - 40);
-        for (int i = from; i < msgs.size(); i++) {
-            Store.Msg m = msgs.get(i);
-            boolean ai = "ai".equals(m.role);
-            TextView tv = new TextView(this);
-            tv.setText(m.text);
-            tv.setTextSize(15);
-            tv.setTextColor(getColor(R.color.text));
-            tv.setMaxWidth(maxWidth);
-            tv.setPadding(dp(14), dp(10), dp(14), dp(10));
-            tv.setBackgroundResource(ai ? R.drawable.bg_bubble_ai : R.drawable.bg_bubble_user);
-            LinearLayout row = new LinearLayout(this);
-            row.setGravity(ai ? Gravity.START : Gravity.END);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.bottomMargin = dp(8);
-            row.addView(tv);
-            chatList.addView(row, lp);
+        InputMethodManager imm = getSystemService(InputMethodManager.class);
+        if (imm != null) imm.hideSoftInputFromWindow(tabs[i].getWindowToken(), 0);
+    }
+
+    // ---------- actions used by the tabs ----------
+
+    Store store() { return store; }
+
+    Speaker speaker() { return speaker; }
+
+    void talk(String text) {
+        if (text == null && !ensureMic()) return;
+        Intent i = new Intent(this, CheckInService.class).setAction(CheckInService.ACTION_TALK);
+        if (text != null) i.putExtra(CheckInService.EXTRA_TEXT, text);
+        try {
+            startForegroundService(i);
+        } catch (Exception e) {
+            Toast.makeText(this, "Could not start the assistant", Toast.LENGTH_SHORT).show();
         }
-        scrollChat.post(() -> scrollChat.fullScroll(View.FOCUS_DOWN));
     }
 
-    private int dp(int v) {
-        return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+    void checkInNow() {
+        CheckInService.send(this, CheckInService.ACTION_CHECK_IN);
     }
 
-    private void showLearnings() {
-        List<String> items = store.learnings();
-        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("Aapne kya seekha");
-        if (items.isEmpty()) b.setMessage("Abhi kuch nahi. Jab wo puchegi \"aaj kya seekha?\" to aapka jawab yahan save hoga.");
-        else b.setItems(items.toArray(new String[0]), null);
-        b.setPositiveButton("OK", null).show();
+    void setAuto(boolean on) {
+        if (on) {
+            requestRuntimePermissions();
+            Intent i = new Intent(this, CheckInService.class).setAction(CheckInService.ACTION_START)
+                    .putExtra(CheckInService.EXTRA_GREET, true);
+            store.setServiceOn(true);
+            startForegroundService(i);
+            askBatteryOptimization();
+        } else {
+            store.setServiceOn(false);
+            startService(new Intent(this, CheckInService.class).setAction(CheckInService.ACTION_STOP));
+        }
+    }
+
+    void reschedule() {
+        if (store.serviceOn()) CheckInService.send(this, CheckInService.ACTION_RESCHEDULE);
     }
 
     // ---------- permissions ----------
 
-    private boolean hasMic() {
+    boolean hasMic() {
         return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
     }
 
-    private boolean ensurePermissions() {
+    boolean hasNotificationPermission() {
+        return Build.VERSION.SDK_INT < 33
+                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean ensureMic() {
         if (hasMic()) return true;
-        requestRuntimePermissions();
-        Toast.makeText(this, "Mic permission do, phir dobara dabao", Toast.LENGTH_SHORT).show();
+        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 2);
+        Toast.makeText(this, "Allow microphone access to talk", Toast.LENGTH_SHORT).show();
         return false;
     }
 
-    private void requestRuntimePermissions() {
+    void requestRuntimePermissions() {
         List<String> need = new ArrayList<>();
         if (!hasMic()) need.add(Manifest.permission.RECORD_AUDIO);
-        if (Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            need.add(Manifest.permission.POST_NOTIFICATIONS);
-        }
+        if (!hasNotificationPermission()) need.add(Manifest.permission.POST_NOTIFICATIONS);
         if (!need.isEmpty()) requestPermissions(need.toArray(new String[0]), 1);
     }
 
-    private void askBatteryOptimization() {
-        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        if (pm.isIgnoringBatteryOptimizations(getPackageName())) return;
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (store.serviceOn() && hasMic()) CheckInService.send(this, CheckInService.ACTION_RESTART);
+        settings.refresh();
+    }
+
+    boolean ignoringBatteryOptimizations() {
+        PowerManager pm = getSystemService(PowerManager.class);
+        return pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+    }
+
+    void askBatteryOptimization() {
+        if (ignoringBatteryOptimizations()) return;
         try {
             startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                     Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            openAppDetails();
+        }
+    }
+
+    void openAppDetails() {
+        try {
+            startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
         } catch (Exception ignored) {
         }
+    }
+
+    // ---------- onboarding ----------
+
+    private void showOnboarding() {
+        EditText input = new EditText(this);
+        input.setHint("Your name");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        input.setText(store.name());
+        FrameLayout box = new FrameLayout(this);
+        int pad = dp(20);
+        box.setPadding(pad, dp(8), pad, 0);
+        box.addView(input);
+        new AlertDialog.Builder(this)
+                .setTitle("Welcome")
+                .setMessage("What should " + store.herName() + " call you?")
+                .setView(box)
+                .setCancelable(false)
+                .setPositiveButton("Continue", (d, w) -> {
+                    store.setName(input.getText().toString());
+                    store.setOnboarded();
+                    requestRuntimePermissions();
+                    home.refresh();
+                    settings.refresh();
+                })
+                .show();
+    }
+
+    int dp(int v) {
+        return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
 }

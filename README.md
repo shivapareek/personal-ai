@@ -10,7 +10,9 @@ rakhti hai, career ke baare me puchti hai aur aapki todo list follow-up karti ha
 - **Mic dabao** aur kuch bhi baat karo
 - **Asli neural voice** (Microsoft Edge ki free Swara / Neerja voice), net na ho to phone ki voice
 - **Free AI** bina key ke (Pollinations). Behtar AI ke liye Groq ki free key (optional)
-- Modern dark UI, chat history, "aaj kya seekha" log
+- Professional flat UI (light + dark mode), bottom navigation: Home, Tasks, Journal, Settings
+- Background reliable: exact alarms, foreground service, recent apps se hatane par restart, reboot ke baad wapas,
+  har 15 min safety-net job, check-in ka message notification me bhi dikhta hai (Reply button ke saath)
 
 ## APK
 
@@ -19,11 +21,12 @@ Har push par GitHub Actions APK build karke **Releases** me daal deta hai:
 
 ## Setup
 
-1. Install karo, mic + notification permission do
-2. Pehli baar Settings khulegi: apna naam, uska naam, bhasha. **Save**
-3. Home par **Auto check-in** switch on karo. Battery optimization band karne ka popup aaye to **Allow**
-4. Wo turant hello bolegi. Mic dabao aur jawab do. **Check-in** button se kabhi bhi test karo
-5. Todo me kaam add karo
+1. Install karo, apna naam likho, mic + notification permission do
+2. Home par switch on karo. Battery popup aaye to **Allow**
+3. Wo turant hello bolegi. Mic dabao aur jawab do, ya type karo. **Check in now** se kabhi bhi test karo
+4. Settings → Background reliability: sab "Allowed / Unrestricted" hona chahiye. Xiaomi/Oppo/Vivo/Realme par
+   **Autostart** on karo aur Recent apps me app ko **Lock** karo
+5. Default time 7 AM se 12 AM (midnight) hai, Settings → Check-ins me badal sakte ho
 
 Phone me Google app / Speech Services hona chahiye (speech recognition ke liye), aur Hindi offline voice
 ke liye Settings → Languages → Text-to-speech → Google → Hindi voice data.

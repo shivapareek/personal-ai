@@ -118,6 +118,11 @@ public class Messages {
                 : "Sorry, I cannot think right now. Check the internet and talk to me again.";
     }
 
+    public static String noRecognizer(Store s) {
+        return s.hindi() ? "इस फ़ोन पर आवाज़ पहचानने की सुविधा नहीं मिली। आप मुझे लिखकर मैसेज कर सकते हो।"
+                : "Speech recognition is not available on this phone. You can type your message to me.";
+    }
+
     public static String testVoice(Store s, boolean hi) {
         String her = s.herName();
         return hi ? "हाय! मैं " + her + " हूँ, आपकी अपनी साथी। मैं आपका ख्याल रखूँगी, ठीक है?"

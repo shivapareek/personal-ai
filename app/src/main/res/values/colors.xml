@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#0B0F1A</color>
-    <color name="surface">#141A2A</color>
-    <color name="surface2">#1C2438</color>
-    <color name="stroke">#273048</color>
-    <color name="primary">#8B5CF6</color>
-    <color name="primaryDark">#6D3FE0</color>
-    <color name="accent">#EC4899</color>
-    <color name="text">#F1F5F9</color>
-    <color name="muted">#8B95AD</color>
-    <color name="success">#22C55E</color>
-    <color name="danger">#F87171</color>
+    <color name="bg">#F6F6F4</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface2">#F1F1EE</color>
+    <color name="stroke">#E3E3DF</color>
+    <color name="text">#16181D</color>
+    <color name="muted">#6B7079</color>
+    <color name="accent">#0F766E</color>
+    <color name="accentSoft">#E3F0EE</color>
+    <color name="onAccent">#FFFFFF</color>
+    <color name="danger">#B42318</color>
+    <color name="brand">#0F766E</color>
+    <bool name="lightBars">true</bool>
 </resources>

@@ -50,6 +50,16 @@ public class Store {
 
     public Store(Context c) {
         p = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        migrate();
+    }
+
+    /** v3: the old default quiet window (8 AM - 10 PM) silenced evening check-ins; widen it to 7 AM - midnight. */
+    private void migrate() {
+        if (p.getInt("schema", 0) >= 3) return;
+        SharedPreferences.Editor e = p.edit();
+        if (p.getInt("startHour", 7) == 8) e.putInt("startHour", 7);
+        if (p.getInt("endHour", 24) == 22) e.putInt("endHour", 24);
+        e.putInt("schema", 3).apply();
     }
 
     public SharedPreferences prefs() { return p; }
@@ -59,8 +69,8 @@ public class Store {
     public String herName() { String n = p.getString("herName", "").trim(); return n.isEmpty() ? "Aisha" : n; }
     public boolean hindi() { return "hi".equals(p.getString("lang", "hi")); }
     public int intervalMin() { return p.getInt("interval", 30); }
-    public int startHour() { return p.getInt("startHour", 8); }
-    public int endHour() { return p.getInt("endHour", 22); }
+    public int startHour() { return p.getInt("startHour", 7); }
+    public int endHour() { return p.getInt("endHour", 24); }
     public boolean onlineVoice() { return p.getBoolean("onlineVoice", true); }
     public String voiceName() { return p.getString("voice", ""); }
     public boolean listen() { return p.getBoolean("listen", true); }
@@ -70,25 +80,36 @@ public class Store {
     public boolean onboarded() { return p.getBoolean("onboarded", false); }
     public void setOnboarded() { p.edit().putBoolean("onboarded", true).apply(); }
 
-    public void saveSettings(String name, String herName, boolean hindi, int intervalMin, int startHour, int endHour,
-                             boolean onlineVoice, String voice, boolean listen, String aiUrl, String aiModel, String aiKey) {
-        p.edit()
-                .putString("name", name)
-                .putString("herName", herName)
-                .putString("lang", hindi ? "hi" : "en")
-                .putInt("interval", Math.max(1, intervalMin))
-                .putInt("startHour", clampHour(startHour))
-                .putInt("endHour", clampHour(endHour))
-                .putBoolean("onlineVoice", onlineVoice)
-                .putString("voice", voice)
-                .putBoolean("listen", listen)
-                .putString("aiUrl", aiUrl)
-                .putString("aiModel", aiModel)
-                .putString("aiKey", aiKey)
-                .apply();
+    public void setName(String v) { p.edit().putString("name", v.trim()).apply(); }
+    public void setHerName(String v) { p.edit().putString("herName", v.trim()).apply(); }
+    public void setHindi(boolean v) { p.edit().putString("lang", v ? "hi" : "en").apply(); }
+    public void setIntervalMin(int v) { p.edit().putInt("interval", Math.max(1, v)).apply(); }
+    public void setStartHour(int v) { p.edit().putInt("startHour", Math.max(0, Math.min(23, v))).apply(); }
+    public void setEndHour(int v) { p.edit().putInt("endHour", Math.max(1, Math.min(24, v))).apply(); }
+    public void setOnlineVoice(boolean v) { p.edit().putBoolean("onlineVoice", v).apply(); }
+    public void setVoiceName(String v) { p.edit().putString("voice", v).apply(); }
+    public void setListen(boolean v) { p.edit().putBoolean("listen", v).apply(); }
+    public void setAiUrl(String v) { p.edit().putString("aiUrl", v.trim().isEmpty() ? DEFAULT_AI_URL : v.trim()).apply(); }
+    public void setAiModel(String v) { p.edit().putString("aiModel", v.trim().isEmpty() ? DEFAULT_AI_MODEL : v.trim()).apply(); }
+    public void setAiKey(String v) { p.edit().putString("aiKey", v.trim()).apply(); }
+
+    /** "7:00 AM", hour 0 and 24 are both midnight. */
+    public static String hourLabel(int h) {
+        int hh = h % 24;
+        int twelve = hh % 12 == 0 ? 12 : hh % 12;
+        return twelve + ":00 " + (hh < 12 ? "AM" : "PM") + (hh == 0 ? " (midnight)" : "");
     }
 
-    private static int clampHour(int h) { return Math.max(0, Math.min(23, h)); }
+    /** "11:30 PM" today, "tomorrow 7:00 AM" otherwise. */
+    public static String timeLabel(long t) {
+        String time = new SimpleDateFormat("h:mm a", Locale.US).format(new Date(t));
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.setTimeInMillis(t);
+        if (c.get(java.util.Calendar.DAY_OF_YEAR) == now.get(java.util.Calendar.DAY_OF_YEAR)
+                && c.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR)) return time;
+        return "tomorrow " + time;
+    }
 
     // ---- live state (written by the service, shown by the UI) ----
     public boolean serviceOn() { return p.getBoolean(KEY_SERVICE_ON, false); }
@@ -178,6 +199,20 @@ public class Store {
             p.edit().putString("learnings", a.toString()).apply();
         } catch (JSONException ignored) {
         }
+    }
+
+    /** Newest first, {date, text}. */
+    public List<String[]> learningEntries() {
+        List<String[]> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(p.getString("learnings", "[]"));
+            for (int i = a.length() - 1; i >= 0; i--) {
+                JSONObject o = a.getJSONObject(i);
+                out.add(new String[]{o.getString("date"), o.getString("text")});
+            }
+        } catch (JSONException ignored) {
+        }
+        return out;
     }
 
     /** Newest first, "date - text". */

@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.shiva.personalai'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.shiva.personalai"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        personal {
+            storeFile rootProject.file("keystore/personal-ai.jks")
+            storePassword "personalai123"
+            keyAlias "personalai"
+            keyPassword "personalai123"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.personal
+        }
+        debug {
+            signingConfig signingConfigs.personal
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+}

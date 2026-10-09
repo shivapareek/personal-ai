@@ -1,0 +1,46 @@
+name: Build APK
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-34 build-tools;34.0.0"
+
+      - name: Build release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk PersonalAI.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAI-apk
+          path: PersonalAI.apk
+
+      - name: Publish APK as GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v1.0-build${{ github.run_number }}"
+          gh release create "$TAG" PersonalAI.apk \
+            --repo "${{ github.repository }}" \
+            --title "Personal AI APK (build ${{ github.run_number }})" \
+            --notes "Android APK built from commit ${{ github.sha }}. Download PersonalAI.apk below and install it on your phone." \
+            --latest

@@ -29,13 +29,22 @@ jobs:
           ./gradlew assembleRelease --no-daemon --stacktrace
           cp app/build/outputs/apk/release/app-release.apk PersonalAI.apk
 
-      - name: Smoke test free AI endpoint (informational)
+      - name: Probe free AI models, latency, streaming and rate limits (informational)
         continue-on-error: true
         run: |
-          curl -sS --max-time 60 -X POST https://text.pollinations.ai/openai \
-            -H "Content-Type: application/json" \
-            -d '{"model":"openai","messages":[{"role":"user","content":"Reply with the single word OK"}]}' | head -c 600
-          echo
+          echo "== models =="; curl -sS --max-time 30 https://text.pollinations.ai/models | python3 -c "import sys,json; d=json.load(sys.stdin); [print(m.get('name'), '|', m.get('description','')[:60], '| tier', m.get('tier'), '| reasoning', m.get('reasoning')) for m in d]" || true
+          for M in openai openai-fast mistral llama gemini qwen-coder; do
+            T0=$(date +%s.%N)
+            R=$(curl -sS --max-time 40 -o /tmp/r.json -w "%{http_code}" -X POST https://text.pollinations.ai/openai -H "Content-Type: application/json" \
+              -d "{\"model\":\"$M\",\"max_tokens\":120,\"messages\":[{\"role\":\"user\",\"content\":\"Hindi me ek line me batao: aaj padhai ka mood nahi hai, kya karu?\"}]}")
+            T1=$(date +%s.%N)
+            echo "$M -> HTTP $R in $(python3 -c "print(round($T1-$T0,2))")s : $(python3 -c "import json;d=json.load(open('/tmp/r.json'));print(d.get('model'), '|', d['choices'][0]['message']['content'][:90])" 2>/dev/null || head -c 200 /tmp/r.json)"
+          done
+          echo "== burst of 4 back-to-back requests =="
+          for i in 1 2 3 4; do curl -sS --max-time 40 -o /dev/null -w "req $i HTTP %{http_code} %{time_total}s\n" -X POST https://text.pollinations.ai/openai -H "Content-Type: application/json" -d '{"model":"openai-fast","messages":[{"role":"user","content":"say hi"}]}'; done
+          echo "== streaming (time to first byte) =="
+          curl -sS -N --max-time 40 -o /tmp/s.txt -w "stream HTTP %{http_code} ttfb %{time_starttransfer}s total %{time_total}s\n" -X POST https://text.pollinations.ai/openai -H "Content-Type: application/json" -d '{"model":"openai-fast","stream":true,"messages":[{"role":"user","content":"Tell me two short sentences about chai."}]}'
+          head -c 700 /tmp/s.txt; echo
 
       - name: Smoke test neural voice with reference edge-tts library (informational)
         continue-on-error: true

@@ -39,7 +39,7 @@ public class Store {
     }
 
     public static final String DEFAULT_AI_URL = "https://api.groq.com/openai/v1/chat/completions";
-    public static final String DEFAULT_AI_MODEL = "llama-3.3-70b-versatile";
+    public static final String DEFAULT_AI_MODEL = "auto";
     public static final String PREFS = "personalai";
     public static final String KEY_MESSAGES = "messages";
     public static final String KEY_STATE = "state";
@@ -58,11 +58,14 @@ public class Store {
 
     /** v3: the old default quiet window (8 AM - 10 PM) silenced evening check-ins; widen it to 7 AM - midnight. */
     private void migrate() {
-        if (p.getInt("schema", 0) >= 3) return;
+        if (p.getInt("schema", 0) >= 4) return;
         SharedPreferences.Editor e = p.edit();
+        // v4.2: model is picked automatically from what the key can use
+        String model = p.getString("aiModel", "");
+        if (model.equals("llama-3.3-70b-versatile") || model.isEmpty()) e.putString("aiModel", "auto");
         if (p.getInt("startHour", 7) == 8) e.putInt("startHour", 7);
         if (p.getInt("endHour", 24) == 22) e.putInt("endHour", 24);
-        e.putInt("schema", 3).apply();
+        e.putInt("schema", 4).apply();
     }
 
     public SharedPreferences prefs() { return p; }

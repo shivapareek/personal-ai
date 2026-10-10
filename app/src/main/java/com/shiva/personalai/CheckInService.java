@@ -307,12 +307,13 @@ public class CheckInService extends Service {
         store.setCallState("ringing");
         final int my = convo;
         prepareOpening(my, type, false);
+        // Order matters: post the full-screen notification first (the system launches the call screen
+        // itself when the phone is locked), then light the screen, then open the call screen directly
+        // for the unlocked case.
+        postIncomingCallNotification();
         wakeScreen();
         startRinging();
-        postIncomingCallNotification();
-        // With "Display over other apps" Android lets us open the call screen from the background,
-        // which turns the screen on and shows over the lock screen on every phone brand.
-        if (Foreground.visible() || Settings.canDrawOverlays(this)) openCallScreen(null);
+        openCallScreen(null);
         main.postDelayed(ringTimeout, RING_MS);
         updateStatusNotification();
     }
@@ -565,12 +566,9 @@ public class CheckInService extends Service {
     }
 
     private void openCallScreen(String action) {
-        try {
-            Intent i = new Intent(this, CallActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (action != null) i.setAction(action);
-            startActivity(i);
-        } catch (Exception ignored) {
-        }
+        Intent i = new Intent(this, CallActivity.class);
+        if (action != null) i.setAction(action);
+        Launcher.open(this, i);
     }
 
     private static String formatDuration(long ms) {
@@ -1020,16 +1018,28 @@ public class CheckInService extends Service {
                 .setContentIntent(full)
                 .setFullScreenIntent(full, true)
                 .setOngoing(true);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        // CallStyle is only accepted together with a usable full-screen intent; otherwise the whole
+        // notification is dropped and only the ringtone would play.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && fullScreenAllowed()) {
             Person caller = new Person.Builder().setName(store.herName()).setImportant(true).build();
             b.setStyle(Notification.CallStyle.forIncomingCall(caller, decline, answer));
         } else {
+            b.setPriority(Notification.PRIORITY_MAX);
             b.addAction(new Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_call_end), "Decline", decline).build());
             b.addAction(new Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_call), "Answer", answer).build());
         }
         try {
             getSystemService(NotificationManager.class).notify(NOTIF_CALL, b.build());
         } catch (Exception ignored) {
+        }
+    }
+
+    private boolean fullScreenAllowed() {
+        if (Build.VERSION.SDK_INT < 34) return true;
+        try {
+            return getSystemService(NotificationManager.class).canUseFullScreenIntent();
+        } catch (Exception e) {
+            return false;
         }
     }
 

@@ -158,11 +158,12 @@ public class CallActivity extends Activity {
         if ("none".equals(call)) {
             boolean grace = System.currentTimeMillis() - createdAt < 4000 && !sawCall;
             if (grace) {
-                status.setText("calling…");
+                status.setText("Connecting…");
                 return;
             }
             finishing = true;
             status.setText(sawCall ? "Call ended" : "");
+            status.setVisibility(sawCall ? View.VISIBLE : View.INVISIBLE);
             incoming.setVisibility(View.INVISIBLE);
             active.setVisibility(View.INVISIBLE);
             activity.setText("");
@@ -176,7 +177,7 @@ public class CallActivity extends Activity {
         if ("ringing".equals(call)) {
             incoming.setVisibility(View.VISIBLE);
             active.setVisibility(View.GONE);
-            status.setText("Personal AI audio…");
+            status.setText("Incoming call");
             activity.setText("");
             startRingPulse();
             setProximity(false);
@@ -188,7 +189,7 @@ public class CallActivity extends Activity {
         stopRingPulse();
 
         if ("outgoing".equals(call)) {
-            status.setText("calling…");
+            status.setText("Calling…");
             activity.setText("");
         } else {
             long secs = Math.max(0, (System.currentTimeMillis() - store.callStart()) / 1000);
@@ -197,7 +198,7 @@ public class CallActivity extends Activity {
             String label;
             if (store.muted()) label = "Muted";
             else if ("listening".equals(state)) label = "Listening…";
-            else if ("speaking".equals(state)) label = her + " is speaking";
+            else if ("speaking".equals(state)) label = "Speaking…";
             else if ("thinking".equals(state)) label = "…";
             else label = "";
             activity.setText(label);
@@ -219,8 +220,8 @@ public class CallActivity extends Activity {
         if (ringPulse != null) return;
         pulseRing.setAlpha(1f);
         ringPulse = ObjectAnimator.ofPropertyValuesHolder(pulseRing,
-                PropertyValuesHolder.ofFloat(View.SCALE_X, 0.7f, 1.0f),
-                PropertyValuesHolder.ofFloat(View.SCALE_Y, 0.7f, 1.0f),
+                PropertyValuesHolder.ofFloat(View.SCALE_X, 0.62f, 1.0f),
+                PropertyValuesHolder.ofFloat(View.SCALE_Y, 0.62f, 1.0f),
                 PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0f));
         ringPulse.setDuration(1400);
         ringPulse.setRepeatCount(ValueAnimator.INFINITE);

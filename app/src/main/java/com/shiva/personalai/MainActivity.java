@@ -33,6 +33,7 @@ public class MainActivity extends Activity {
     private JournalTab journal;
     private SettingsTab settings;
     private final View[] tabs = new View[4];
+    private final View[] navs = new View[4];
     private final ImageView[] icons = new ImageView[4];
     private final TextView[] labels = new TextView[4];
     private TextView badge;
@@ -65,9 +66,10 @@ public class MainActivity extends Activity {
         int[] label = {R.id.navHomeLabel, R.id.navTasksLabel, R.id.navJournalLabel, R.id.navSettingsLabel};
         for (int i = 0; i < 4; i++) {
             final int idx = i;
+            navs[i] = findViewById(nav[i]);
             icons[i] = findViewById(icon[i]);
             labels[i] = findViewById(label[i]);
-            findViewById(nav[i]).setOnClickListener(v -> openTab(idx));
+            navs[i].setOnClickListener(v -> openTab(idx));
         }
         badge = findViewById(R.id.navBadge);
 
@@ -143,8 +145,10 @@ public class MainActivity extends Activity {
         for (int j = 0; j < 4; j++) {
             boolean sel = j == i;
             tabs[j].setVisibility(sel ? View.VISIBLE : View.GONE);
+            navs[j].setBackgroundResource(sel ? R.drawable.bg_nav_selected : 0);
             icons[j].setImageTintList(ColorStateList.valueOf(sel ? accent : muted));
-            labels[j].setTextColor(sel ? accent : muted);
+            labels[j].setTextColor(accent);
+            labels[j].setVisibility(sel ? View.VISIBLE : View.GONE);
         }
         InputMethodManager imm = getSystemService(InputMethodManager.class);
         if (imm != null) imm.hideSoftInputFromWindow(tabs[i].getWindowToken(), 0);
@@ -178,9 +182,7 @@ public class MainActivity extends Activity {
     /** She phones the user right now (test the incoming call). */
     void testIncomingCall() {
         requestRuntimePermissions();
-        if (!ensureCallSetup()) return;
-        Toast.makeText(this, "Lock your phone, she will call in 5 seconds", Toast.LENGTH_LONG).show();
-        CheckInService.armAlarm(this, System.currentTimeMillis() + 5000, CheckInService.ACTION_CHECK_IN, 7);
+        CheckInService.send(this, CheckInService.ACTION_CHECK_IN);
     }
 
     void openCallScreen(String action) {
@@ -236,21 +238,21 @@ public class MainActivity extends Activity {
     /** Explains and opens the one setting that is still missing for the screen to light up on a call. */
     boolean ensureCallSetup() {
         if (!canDrawOverlays()) {
-            Ios.alert(this, "Let her calls wake your screen",
+            Ui.alert(this, "Let her calls wake your screen",
                     "Allow \"Display over other apps\" for " + getString(R.string.app_name)
                             + ". Without it Android only plays the ringtone when the screen is off.",
                     null, "Later", "Open Settings", false, this::openOverlaySettings);
             return false;
         }
         if (!fullScreenAllowed()) {
-            Ios.alert(this, "Allow full-screen calls",
+            Ui.alert(this, "Allow full-screen calls",
                     "Turn on full-screen notifications so her call shows on the lock screen.",
                     null, "Later", "Open Settings", false, this::openFullScreenSettings);
             return false;
         }
         if (isMiui() && !store.prefs().getBoolean("miuiShown", false)) {
             store.prefs().edit().putBoolean("miuiShown", true).apply();
-            Ios.alert(this, "One more step on Xiaomi",
+            Ui.alert(this, "One more step on Xiaomi",
                     "Turn on \"Show on Lock screen\" and \"Open new windows while running in the background\".",
                     null, "Later", "Open Settings", false, this::openMiuiPermissions);
             return false;
@@ -341,7 +343,7 @@ public class MainActivity extends Activity {
 
     /** One place to make her fast: get or paste a free Groq / Gemini key. */
     void setupAiKey() {
-        Ios.sheet(this, "Free key = instant, smarter replies", new String[]{
+        Ui.sheet(this, "Free key = instant, smarter replies", new String[]{
                 "Get a free Groq key (recommended)", "Paste my key", "Get a free Google Gemini key", "Use the slow free AI"}, -1, i -> {
             switch (i) {
                 case 0:
@@ -374,7 +376,7 @@ public class MainActivity extends Activity {
             }
         } catch (Exception ignored) {
         }
-        Ios.input(this, "Paste your API key", "Groq keys start with gsk_, Gemini keys with AIza.", clip, "gsk_…",
+        Ui.input(this, "Paste your API key", "Groq keys start with gsk_, Gemini keys with AIza.", clip, "gsk_…",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, true, key -> {
                     store.setAiKey(key.trim());
                     settings.refresh();
@@ -405,7 +407,7 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 if (isFinishing()) return;
                 settings.refresh();
-                Ios.alert(this, t, b, null, null, "OK", false, null);
+                Ui.alert(this, t, b, null, null, "OK", false, null);
             });
         }).start();
     }
@@ -413,14 +415,14 @@ public class MainActivity extends Activity {
     // ---------- onboarding ----------
 
     private void showOnboarding() {
-        Ios.input(this, "Welcome", "What should " + store.herName() + " call you?", store.name(), "Your name",
+        Ui.input(this, "Welcome", "What should " + store.herName() + " call you?", store.name(), "Your name",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS, false, name -> {
                     store.setName(name);
                     store.setOnboarded();
                     requestRuntimePermissions();
                     home.refresh();
                     settings.refresh();
-                    Ios.alert(this, "Make her instant",
+                    Ui.alert(this, "Make her instant",
                             "Without a key she uses a free AI that takes 5 to 15 seconds per reply. "
                                     + "A free Groq key (1 minute, no card) makes her answer in under a second and much smarter.",
                             null, "Later", "Set Up", false, this::setupAiKey);

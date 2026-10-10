@@ -5,58 +5,66 @@
     android:orientation="vertical"
     android:gravity="center_horizontal"
     android:background="@color/callBg"
-    android:paddingTop="64dp"
-    android:paddingBottom="56dp">
-
-    <TextView
-        android:id="@+id/callName"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:textColor="#FFFFFF"
-        android:textSize="34sp"
-        android:fontFamily="sans-serif-light"
-        android:text="Aisha" />
+    android:paddingTop="56dp"
+    android:paddingBottom="44dp">
 
     <TextView
         android:id="@+id/callStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:textColor="#99EBEBF5"
-        android:textSize="17sp"
-        android:text="calling…" />
+        android:background="@drawable/bg_call_chip"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="7dp"
+        android:paddingBottom="7dp"
+        android:textColor="#E6FFFFFF"
+        android:textSize="14sp"
+        android:fontFamily="sans-serif-medium"
+        android:text="Incoming call" />
 
     <FrameLayout
-        android:layout_width="200dp"
-        android:layout_height="200dp"
-        android:layout_marginTop="44dp">
+        android:layout_width="230dp"
+        android:layout_height="230dp"
+        android:layout_marginTop="36dp">
 
         <View
             android:id="@+id/callPulse"
-            android:layout_width="200dp"
-            android:layout_height="200dp"
+            android:layout_width="230dp"
+            android:layout_height="230dp"
             android:background="@drawable/bg_call_pulse"
             android:alpha="0" />
 
         <TextView
             android:id="@+id/callAvatar"
-            android:layout_width="136dp"
-            android:layout_height="136dp"
+            android:layout_width="140dp"
+            android:layout_height="140dp"
             android:layout_gravity="center"
             android:background="@drawable/bg_call_avatar"
             android:gravity="center"
             android:textColor="#FFFFFF"
-            android:textSize="56sp"
-            android:fontFamily="sans-serif-light"
+            android:textSize="58sp"
+            android:fontFamily="sans-serif-medium"
+            android:textStyle="bold"
             android:text="A" />
     </FrameLayout>
+
+    <TextView
+        android:id="@+id/callName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="22dp"
+        android:textColor="#FFFFFF"
+        android:textSize="32sp"
+        android:fontFamily="sans-serif-medium"
+        android:textStyle="bold"
+        android:text="Aisha" />
 
     <TextView
         android:id="@+id/callActivity"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:textColor="#99EBEBF5"
+        android:layout_marginTop="6dp"
+        android:textColor="#A6FFFFFF"
         android:textSize="15sp"
         android:text="" />
 
@@ -69,28 +77,29 @@
         android:id="@+id/incomingControls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:paddingStart="32dp"
-            android:paddingEnd="32dp"
-            android:layout_marginBottom="36dp">
+            android:layout_marginBottom="40dp">
             <LinearLayout
                 android:id="@+id/btnRemind"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:gravity="center_horizontal"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:padding="6dp">
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:paddingStart="16dp"
+                android:paddingEnd="18dp"
+                android:background="@drawable/bg_call_chip">
 
                 <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
                     android:src="@drawable/ic_alarm"
                     android:tint="#FFFFFF"
                     android:importantForAccessibility="no" />
@@ -98,24 +107,27 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginStart="8dp"
                     android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:text="Remind Me" />
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="Remind in 5 min" />
             </LinearLayout>
             <LinearLayout
                 android:id="@+id/btnMessage"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:gravity="center_horizontal"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:padding="6dp">
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:paddingStart="16dp"
+                android:paddingEnd="18dp"
+                android:background="@drawable/bg_call_chip">
 
                 <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
                     android:src="@drawable/ic_chat"
                     android:tint="#FFFFFF"
                     android:importantForAccessibility="no" />
@@ -123,9 +135,10 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginStart="8dp"
                     android:textColor="#FFFFFF"
-                    android:textSize="13sp"
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif-medium"
                     android:text="Message" />
             </LinearLayout>
         </LinearLayout>
@@ -134,8 +147,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:paddingStart="32dp"
-            android:paddingEnd="32dp">
+            android:paddingStart="40dp"
+            android:paddingEnd="40dp">
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -145,22 +158,23 @@
 
                 <ImageButton
                     android:id="@+id/btnDecline"
-                    android:layout_width="76dp"
-                    android:layout_height="76dp"
+                    android:layout_width="74dp"
+                    android:layout_height="74dp"
                     android:background="@drawable/bg_call_red"
                     android:src="@drawable/ic_call_end"
                     android:tint="#FFFFFF"
-                    android:scaleType="fitCenter"
                     android:padding="21dp"
+                    android:scaleType="fitCenter"
+                    android:elevation="4dp"
                     android:contentDescription="Decline" />
 
                 <TextView
-                    android:id="@+id/btnDeclineLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
+                    android:layout_marginTop="10dp"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif-medium"
                     android:text="Decline" />
             </LinearLayout>
             <LinearLayout
@@ -172,22 +186,23 @@
 
                 <ImageButton
                     android:id="@+id/btnAccept"
-                    android:layout_width="76dp"
-                    android:layout_height="76dp"
+                    android:layout_width="74dp"
+                    android:layout_height="74dp"
                     android:background="@drawable/bg_call_green"
                     android:src="@drawable/ic_call"
                     android:tint="#FFFFFF"
-                    android:scaleType="fitCenter"
                     android:padding="21dp"
+                    android:scaleType="fitCenter"
+                    android:elevation="4dp"
                     android:contentDescription="Accept" />
 
                 <TextView
-                    android:id="@+id/btnAcceptLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
+                    android:layout_marginTop="10dp"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif-medium"
                     android:text="Accept" />
             </LinearLayout>
         </LinearLayout>
@@ -195,111 +210,60 @@
 
     <LinearLayout
         android:id="@+id/activeControls"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center_horizontal"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_call_bar"
+        android:padding="10dp"
         android:visibility="gone">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingStart="24dp"
-            android:paddingEnd="24dp">
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:gravity="center_horizontal">
-
-                <ImageButton
-                    android:id="@+id/btnMute"
-                    android:layout_width="72dp"
-                    android:layout_height="72dp"
-                    android:background="@drawable/bg_call_btn"
-                    android:src="@drawable/ic_mic_off"
-                    android:tint="#FFFFFF"
-                    android:scaleType="fitCenter"
-                    android:padding="21dp"
-                    android:contentDescription="mute" />
-
-                <TextView
-                    android:id="@+id/btnMuteLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:text="mute" />
-            </LinearLayout>
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:gravity="center_horizontal">
-
-                <ImageButton
-                    android:id="@+id/btnSpeaker"
-                    android:layout_width="72dp"
-                    android:layout_height="72dp"
-                    android:background="@drawable/bg_call_btn"
-                    android:src="@drawable/ic_volume"
-                    android:tint="#FFFFFF"
-                    android:scaleType="fitCenter"
-                    android:padding="21dp"
-                    android:contentDescription="speaker" />
-
-                <TextView
-                    android:id="@+id/btnSpeakerLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:text="speaker" />
-            </LinearLayout>
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:gravity="center_horizontal">
-
-                <ImageButton
-                    android:id="@+id/btnChat"
-                    android:layout_width="72dp"
-                    android:layout_height="72dp"
-                    android:background="@drawable/bg_call_btn"
-                    android:src="@drawable/ic_chat"
-                    android:tint="#FFFFFF"
-                    android:scaleType="fitCenter"
-                    android:padding="21dp"
-                    android:contentDescription="message" />
-
-                <TextView
-                    android:id="@+id/btnChatLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp"
-                    android:text="message" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <ImageButton
-            android:id="@+id/btnEnd"
-            android:layout_width="76dp"
-            android:layout_height="76dp"
-            android:layout_marginTop="40dp"
-            android:background="@drawable/bg_call_red"
-            android:src="@drawable/ic_call_end"
-            android:tint="#FFFFFF"
-            android:scaleType="fitCenter"
-                    android:padding="21dp"
-            android:contentDescription="End call" />
+            <ImageButton
+                android:id="@+id/btnMute"
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_call_btn"
+                android:src="@drawable/ic_mic_off"
+                android:tint="#FFFFFF"
+                android:padding="16dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="Mute" />
+            <ImageButton
+                android:id="@+id/btnSpeaker"
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_call_btn"
+                android:src="@drawable/ic_volume"
+                android:tint="#FFFFFF"
+                android:padding="16dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="Speaker" />
+            <ImageButton
+                android:id="@+id/btnChat"
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_call_btn"
+                android:src="@drawable/ic_chat"
+                android:tint="#FFFFFF"
+                android:padding="16dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="Open chat" />
+            <ImageButton
+                android:id="@+id/btnEnd"
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_call_red"
+                android:src="@drawable/ic_call_end"
+                android:tint="#FFFFFF"
+                android:padding="16dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="End call" />
     </LinearLayout>
 </LinearLayout>

@@ -3,17 +3,16 @@
     <style name="Base.AppTheme" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:colorPrimary">@color/accent</item>
-        <item name="android:colorPrimaryDark">@color/bar</item>
+        <item name="android:colorPrimaryDark">@color/bg</item>
         <item name="android:colorAccent">@color/accent</item>
         <item name="android:colorControlActivated">@color/accent</item>
-        <item name="android:statusBarColor">@color/bar</item>
-        <item name="android:navigationBarColor">@color/bar</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
         <item name="android:windowLightStatusBar">@bool/lightBars</item>
         <item name="android:textColorPrimary">@color/text</item>
         <item name="android:textColorSecondary">@color/muted</item>
         <item name="android:textColorHint">@color/muted</item>
-        <item name="android:switchStyle">@style/IosSwitch</item>
-        <item name="android:textCursorDrawable">@null</item>
+        <item name="android:switchStyle">@style/ModernSwitch</item>
     </style>
     <style name="AppTheme" parent="Base.AppTheme" />
 
@@ -24,22 +23,23 @@
         <item name="android:windowLightStatusBar">false</item>
     </style>
 
-    <style name="IosSwitch" parent="android:Widget.Material.CompoundButton.Switch">
+    <style name="ModernSwitch" parent="android:Widget.Material.CompoundButton.Switch">
         <item name="android:thumb">@drawable/switch_thumb</item>
         <item name="android:track">@drawable/switch_track</item>
-        <item name="android:switchMinWidth">51dp</item>
+        <item name="android:switchMinWidth">52dp</item>
         <item name="android:background">@null</item>
         <item name="android:showText">false</item>
     </style>
 
     <style name="LargeTitle">
         <item name="android:textColor">@color/text</item>
-        <item name="android:textSize">34sp</item>
+        <item name="android:textSize">30sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:textStyle">bold</item>
-        <item name="android:letterSpacing">-0.01</item>
+        <item name="android:letterSpacing">-0.02</item>
     </style>
     <style name="Footnote">
         <item name="android:textColor">@color/muted</item>
-        <item name="android:textSize">13sp</item>
+        <item name="android:textSize">14sp</item>
     </style>
 </resources>

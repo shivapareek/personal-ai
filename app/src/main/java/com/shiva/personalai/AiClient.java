@@ -45,9 +45,15 @@ public class AiClient {
     static final String FREE_URL = "https://text.pollinations.ai/openai";
     static final String FREE_MODEL = "openai";
     static final String GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-    static final String[] GROQ_MODELS = {"llama-3.3-70b-versatile", "llama-3.1-8b-instant"};
+    static final String GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models";
+    /** Preferred Groq chat models, best first; the list actually offered by the account is checked at runtime. */
+    static final String[] GROQ_MODELS = {"llama-3.3-70b-versatile", "openai/gpt-oss-120b", "moonshotai/kimi-k2-instruct",
+            "meta-llama/llama-4-maverick-17b-128e-instruct", "openai/gpt-oss-20b", "llama-3.1-8b-instant",
+            "meta-llama/llama-4-scout-17b-16e-instruct"};
     static final String GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    static final String[] GEMINI_MODELS = {"gemini-2.5-flash-lite", "gemini-2.0-flash"};
+    static final String GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/openai/models";
+    static final String[] GEMINI_MODELS = {"gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.0-flash",
+            "gemini-2.5-flash", "gemini-flash-latest"};
 
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
@@ -69,7 +75,11 @@ public class AiClient {
     }
 
     static String providerName(Store s) {
-        return endpoint(s).name;
+        String key = s.aiKey();
+        if (key.isEmpty()) return "Free AI";
+        if (key.startsWith("gsk_")) return "Groq";
+        if (key.startsWith("AIza")) return "Gemini";
+        return "Custom";
     }
 
     static boolean usingFreeAi(Store s) {
@@ -78,17 +88,71 @@ public class AiClient {
 
     private static Endpoint endpoint(Store s) {
         String key = s.aiKey();
-        boolean customModel = !Store.DEFAULT_AI_MODEL.equals(s.aiModel());
+        String chosen = s.aiModel();
+        boolean auto = chosen.isEmpty() || Store.DEFAULT_AI_MODEL.equals(chosen);
         if (key.isEmpty()) return new Endpoint("Free AI", FREE_URL, "", FREE_MODEL);
         if (key.startsWith("gsk_")) {
-            return customModel ? new Endpoint("Groq", GROQ_URL, key, s.aiModel(), GROQ_MODELS[0])
-                    : new Endpoint("Groq", GROQ_URL, key, GROQ_MODELS);
+            return new Endpoint("Groq", GROQ_URL, key, auto ? models(s, "Groq", GROQ_MODELS_URL, key, GROQ_MODELS) : withFallback(chosen, GROQ_MODELS));
         }
         if (key.startsWith("AIza")) {
-            return customModel ? new Endpoint("Gemini", GEMINI_URL, key, s.aiModel(), GEMINI_MODELS[0])
-                    : new Endpoint("Gemini", GEMINI_URL, key, GEMINI_MODELS);
+            return new Endpoint("Gemini", GEMINI_URL, key, auto ? models(s, "Gemini", GEMINI_MODELS_URL, key, GEMINI_MODELS) : withFallback(chosen, GEMINI_MODELS));
         }
-        return new Endpoint("Custom", s.aiUrl(), key, s.aiModel());
+        return new Endpoint("Custom", s.aiUrl(), key, auto ? GROQ_MODELS[0] : chosen);
+    }
+
+    private static String[] withFallback(String first, String[] rest) {
+        List<String> out = new ArrayList<>();
+        out.add(first);
+        for (String m : rest) if (!out.contains(m)) out.add(m);
+        return out.subList(0, Math.min(3, out.size())).toArray(new String[0]);
+    }
+
+    /**
+     * Asks the provider which models this key can use (cached for a day) and returns up to three
+     * preferred ones, so a renamed or retired model never breaks her.
+     */
+    private static String[] models(Store s, String provider, String url, String key, String[] preferred) {
+        String cacheKey = "models_" + provider + "_" + Integer.toHexString(key.hashCode());
+        String cached = s.prefs().getString(cacheKey, "");
+        long at = s.prefs().getLong(cacheKey + "_at", 0);
+        if (!cached.isEmpty() && System.currentTimeMillis() - at < 24 * 3600_000L) return cached.split(",");
+        List<String> available = new ArrayList<>();
+        try (Response r = CLIENT.newCall(new Request.Builder().url(url).header("Authorization", "Bearer " + key).build()).execute()) {
+            if (r.isSuccessful() && r.body() != null) {
+                JSONArray data = new JSONObject(r.body().string()).optJSONArray("data");
+                if (data != null) {
+                    for (int i = 0; i < data.length(); i++) {
+                        String id = data.getJSONObject(i).optString("id", "");
+                        if (id.startsWith("models/")) id = id.substring(7);
+                        if (!id.isEmpty()) available.add(id);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        List<String> pick = new ArrayList<>();
+        for (String m : preferred) if (available.contains(m)) pick.add(m);
+        if (pick.isEmpty()) {
+            for (String id : available) {
+                String l = id.toLowerCase(Locale.ROOT);
+                if (l.contains("whisper") || l.contains("tts") || l.contains("guard") || l.contains("embed")
+                        || l.contains("playai") || l.contains("compound") || l.contains("image") || l.contains("vision")
+                        || l.contains("qwen") || l.contains("deepseek-r1") || l.contains("audio")) continue;
+                pick.add(id);
+                if (pick.size() == 2) break;
+            }
+        }
+        if (pick.isEmpty()) return preferred.length > 3 ? java.util.Arrays.copyOf(preferred, 3) : preferred;
+        String[] out = pick.subList(0, Math.min(3, pick.size())).toArray(new String[0]);
+        s.prefs().edit().putString(cacheKey, String.join(",", out)).putLong(cacheKey + "_at", System.currentTimeMillis()).apply();
+        return out;
+    }
+
+    /** Forget the cached model list (after a model error) so the next call asks the provider again. */
+    private static void forgetModels(Store s) {
+        android.content.SharedPreferences.Editor e = s.prefs().edit();
+        for (String k : s.prefs().getAll().keySet()) if (k.startsWith("models_")) e.remove(k);
+        e.apply();
     }
 
     /** Non-streaming convenience (used while the phone rings). */
@@ -102,35 +166,43 @@ public class AiClient {
 
     public static Result stream(Store s, int mode, List<String> pending, List<Store.Msg> history,
                                 boolean opening, boolean call, SentenceListener listener) throws Exception {
-        JSONArray messages = buildMessages(s, mode, pending, history, opening, call);
         Endpoint primary = endpoint(s);
-        Exception last = null;
         List<Endpoint> chain = new ArrayList<>();
         chain.add(primary);
         if (!primary.key.isEmpty()) chain.add(new Endpoint("Free AI", FREE_URL, "", FREE_MODEL));
+        List<String> errors = new ArrayList<>();
+        boolean modelError = false;
         for (Endpoint e : chain) {
+            // the keyless endpoint answers 402 to long prompts, so it gets a compact one
+            JSONArray messages = buildMessages(s, mode, pending, history, opening, call, e.key.isEmpty());
             for (String model : e.models) {
                 Emitter em = new Emitter(listener);
                 long t0 = System.currentTimeMillis();
                 try {
                     String text = run(e, model, messages, em);
                     Result r = finish(text, pending.size(), em);
-                    r.provider = e.name;
+                    r.provider = e.name + (e.key.isEmpty() ? "" : " (" + model + ")");
                     r.millis = System.currentTimeMillis() - t0;
                     if (!r.reply.isEmpty()) return r;
-                    last = new Exception(e.name + ": empty reply");
+                    errors.add(e.name + " " + model + ": empty reply");
                 } catch (Exception ex) {
-                    last = ex;
                     if (em.emitted > 0) {
-                        // the stream broke after she already started talking: keep what she said
                         Result r = finish(em.full.toString(), pending.size(), em);
                         r.provider = e.name;
+                        r.millis = System.currentTimeMillis() - t0;
                         return r;
                     }
+                    String msg = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
+                    errors.add(msg);
+                    String low = msg.toLowerCase(Locale.ROOT);
+                    if (low.contains("model") || msg.contains("HTTP 404")) modelError = true;
+                    // a bad key or quota will not get better with another model of the same provider
+                    if (msg.contains("HTTP 401") || msg.contains("HTTP 403") || msg.contains("HTTP 429") || msg.contains("HTTP 402")) break;
                 }
             }
         }
-        throw last != null ? last : new Exception("AI unavailable");
+        if (modelError) forgetModels(s);
+        throw new Exception(errors.isEmpty() ? "AI unavailable" : String.join("  |  ", errors));
     }
 
     // ---------- request ----------
@@ -143,7 +215,8 @@ public class AiClient {
                 .put("temperature", 0.85)
                 // the keyless endpoint rejects max_tokens and is faster without streaming
                 .put("stream", !free);
-        if (!free) body.put("max_tokens", 260);
+        if (!free) body.put("max_tokens", 300);
+        if (model.contains("gpt-oss")) body.put("reasoning_effort", "low");
         else body.put("seed", (int) (System.nanoTime() & 0x7fffffff));
         Request.Builder rb = new Request.Builder().url(e.url).post(RequestBody.create(body.toString(), JSON));
         if (!e.key.isEmpty()) rb.header("Authorization", "Bearer " + e.key);
@@ -151,7 +224,19 @@ public class AiClient {
             if (resp.body() == null) throw new Exception(e.name + ": no response");
             if (!resp.isSuccessful()) {
                 String err = resp.body().string();
-                throw new Exception(e.name + " HTTP " + resp.code() + ": " + err.substring(0, Math.min(160, err.length())));
+                String detail = err;
+                try {
+                    JSONObject o = new JSONObject(err);
+                    Object eo = o.opt("error");
+                    if (eo instanceof JSONObject) detail = ((JSONObject) eo).optString("message", err);
+                    else if (eo != null) detail = String.valueOf(eo);
+                } catch (Exception ignored) {
+                }
+                String hint = resp.code() == 401 ? " (key is wrong or was deleted)"
+                        : resp.code() == 402 && free ? " (free AI limit, add a Groq key)"
+                        : resp.code() == 429 ? " (too many requests, wait a minute)" : "";
+                detail = detail.replace("\n", " ");
+                throw new Exception(e.name + " HTTP " + resp.code() + hint + ": " + detail.substring(0, Math.min(140, detail.length())));
             }
             String type = resp.header("Content-Type", "");
             if (type != null && type.contains("event-stream")) {
@@ -302,12 +387,12 @@ public class AiClient {
     // ---------- prompt ----------
 
     private static JSONArray buildMessages(Store s, int mode, List<String> pending, List<Store.Msg> history,
-                                           boolean opening, boolean call) throws Exception {
+                                           boolean opening, boolean call, boolean compact) throws Exception {
         JSONArray messages = new JSONArray();
-        messages.put(new JSONObject().put("role", "system").put("content", systemPrompt(s, mode, pending, call)));
+        messages.put(new JSONObject().put("role", "system").put("content", systemPrompt(s, mode, pending, call, compact)));
         List<Store.Msg> convo = new ArrayList<>();
         for (Store.Msg m : history) if ("ai".equals(m.role) || "user".equals(m.role)) convo.add(m);
-        for (int i = Math.max(0, convo.size() - 20); i < convo.size(); i++) {
+        for (int i = Math.max(0, convo.size() - (compact ? 6 : 20)); i < convo.size(); i++) {
             Store.Msg m = convo.get(i);
             messages.put(new JSONObject().put("role", "ai".equals(m.role) ? "assistant" : "user").put("content", m.text));
         }
@@ -326,6 +411,22 @@ public class AiClient {
         return messages;
     }
 
+    private static String compactPrompt(Store s, String her, String user, List<String> pending, boolean call) {
+        StringBuilder b = new StringBuilder();
+        b.append("You are ").append(her).append(", ").append(user)
+                .append("'s caring, witty girlfriend. Talk like a real person, answer questions properly, ")
+                .append(call ? "this is a phone call, " : "").append("reply in 1-2 short sentences, no emojis. ");
+        b.append(s.hindi() ? "Speak Hindi in Devanagari. " : "Speak simple Indian English. ");
+        if (!pending.isEmpty()) {
+            b.append("Pending tasks: ");
+            for (int i = 0; i < pending.size(); i++) b.append(i + 1).append(") ").append(pending.get(i)).append("; ");
+        }
+        b.append("At the end add [[done:N]] if they finished task N, [[ask]] if you asked something");
+        if (call) b.append(", [[end]] if they said bye");
+        b.append(".");
+        return b.toString();
+    }
+
     private static String modeName(int mode) {
         switch (mode) {
             case Messages.TYPE_CARE: return "how-are-you";
@@ -335,9 +436,10 @@ public class AiClient {
         }
     }
 
-    private static String systemPrompt(Store s, int mode, List<String> pending, boolean call) {
+    private static String systemPrompt(Store s, int mode, List<String> pending, boolean call, boolean compact) {
         String her = s.herName();
         String user = s.name().isEmpty() ? "your partner" : s.name();
+        if (compact) return compactPrompt(s, her, user, pending, call);
         StringBuilder b = new StringBuilder();
         switch (s.personality()) {
             case 1:

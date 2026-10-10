@@ -16,34 +16,35 @@
         <include layout="@layout/tab_settings" />
     </FrameLayout>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="0.5dp"
-        android:background="@color/separator" />
-
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="58dp"
+        android:layout_height="64dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="14dp"
         android:orientation="horizontal"
-        android:background="@color/bar">
+        android:padding="6dp"
+        android:elevation="6dp"
+        android:background="@drawable/bg_nav">
         <LinearLayout
             android:id="@+id/navHome"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:orientation="vertical"
+            android:orientation="horizontal"
             android:gravity="center"
-            android:paddingTop="6dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless">
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp">
 
             <FrameLayout
-                android:layout_width="40dp"
-                android:layout_height="28dp">
+                android:layout_width="26dp"
+                android:layout_height="26dp">
 
                 <ImageView
                     android:id="@+id/navHomeIcon"
-                    android:layout_width="25dp"
-                    android:layout_height="25dp"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_chat"
                     android:contentDescription="Chat" />
@@ -54,9 +55,10 @@
                 android:id="@+id/navHomeLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
-                android:textSize="10sp"
+                android:layout_marginStart="6dp"
+                android:textSize="13sp"
                 android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
                 android:text="Chat" />
         </LinearLayout>
         <LinearLayout
@@ -64,34 +66,34 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:orientation="vertical"
+            android:orientation="horizontal"
             android:gravity="center"
-            android:paddingTop="6dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless">
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp">
 
             <FrameLayout
-                android:layout_width="40dp"
-                android:layout_height="28dp">
+                android:layout_width="26dp"
+                android:layout_height="26dp">
 
                 <ImageView
                     android:id="@+id/navTasksIcon"
-                    android:layout_width="25dp"
-                    android:layout_height="25dp"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_tasks"
                     android:contentDescription="Tasks" />
                 <TextView
                     android:id="@+id/navBadge"
                     android:layout_width="wrap_content"
-                    android:layout_height="18dp"
+                    android:layout_height="16dp"
                     android:layout_gravity="top|end"
-                    android:minWidth="18dp"
-                    android:paddingStart="5dp"
-                    android:paddingEnd="5dp"
+                    android:minWidth="16dp"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
                     android:gravity="center"
                     android:background="@drawable/bg_badge"
                     android:textColor="#FFFFFF"
-                    android:textSize="11sp"
+                    android:textSize="10sp"
                     android:fontFamily="sans-serif-medium"
                     android:visibility="gone" />
             </FrameLayout>
@@ -100,9 +102,10 @@
                 android:id="@+id/navTasksLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
-                android:textSize="10sp"
+                android:layout_marginStart="6dp"
+                android:textSize="13sp"
                 android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
                 android:text="Tasks" />
         </LinearLayout>
         <LinearLayout
@@ -110,19 +113,19 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:orientation="vertical"
+            android:orientation="horizontal"
             android:gravity="center"
-            android:paddingTop="6dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless">
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp">
 
             <FrameLayout
-                android:layout_width="40dp"
-                android:layout_height="28dp">
+                android:layout_width="26dp"
+                android:layout_height="26dp">
 
                 <ImageView
                     android:id="@+id/navJournalIcon"
-                    android:layout_width="25dp"
-                    android:layout_height="25dp"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_book"
                     android:contentDescription="Journal" />
@@ -133,9 +136,10 @@
                 android:id="@+id/navJournalLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
-                android:textSize="10sp"
+                android:layout_marginStart="6dp"
+                android:textSize="13sp"
                 android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
                 android:text="Journal" />
         </LinearLayout>
         <LinearLayout
@@ -143,19 +147,19 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:orientation="vertical"
+            android:orientation="horizontal"
             android:gravity="center"
-            android:paddingTop="6dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless">
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp">
 
             <FrameLayout
-                android:layout_width="40dp"
-                android:layout_height="28dp">
+                android:layout_width="26dp"
+                android:layout_height="26dp">
 
                 <ImageView
                     android:id="@+id/navSettingsIcon"
-                    android:layout_width="25dp"
-                    android:layout_height="25dp"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_settings"
                     android:contentDescription="Settings" />
@@ -166,9 +170,10 @@
                 android:id="@+id/navSettingsLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
-                android:textSize="10sp"
+                android:layout_marginStart="6dp"
+                android:textSize="13sp"
                 android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
                 android:text="Settings" />
         </LinearLayout>
     </LinearLayout>

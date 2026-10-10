@@ -82,7 +82,7 @@ class SettingsTab {
             refresh();
         });
         row(c, R.drawable.ic_chat, BLUE, "Check-in style", () -> s.callStyle() ? "Phone call" : "Voice message", () ->
-                Ios.sheet(a, "How should she check in?", new String[]{"Phone call", "Voice message"}, s.callStyle() ? 0 : 1, i -> {
+                Ui.sheet(a, "How should she check in?", new String[]{"Phone call", "Voice message"}, s.callStyle() ? 0 : 1, i -> {
                     s.setCallStyle(i == 0);
                     refresh();
                 }));
@@ -97,22 +97,22 @@ class SettingsTab {
 
         c = section("Companion");
         row(c, R.drawable.ic_heart, PINK, "Personality", () -> PERSONALITIES[s.personality()], () ->
-                Ios.sheet(a, "Personality", PERSONALITIES, s.personality(), i -> {
+                Ui.sheet(a, "Personality", PERSONALITIES, s.personality(), i -> {
                     s.setPersonality(i);
                     refresh();
                 }));
         row(c, R.drawable.ic_person, GRAY, "Your name", () -> s.name().isEmpty() ? "Not set" : s.name(), () ->
-                Ios.input(a, "Your name", null, s.name(), "Name", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS, true, v -> {
+                Ui.input(a, "Your name", null, s.name(), "Name", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS, true, v -> {
                     s.setName(v);
                     refresh();
                 }));
         row(c, R.drawable.ic_person, GRAY, "Address me as", () -> ADDRESS[s.address()], () ->
-                Ios.sheet(a, "Used for Hindi grammar", ADDRESS, s.address(), i -> {
+                Ui.sheet(a, "Used for Hindi grammar", ADDRESS, s.address(), i -> {
                     s.setAddress(i);
                     refresh();
                 }));
         row(c, R.drawable.ic_translate, BLUE, "Language", () -> s.hindi() ? "Hindi" : "English", () ->
-                Ios.sheet(a, "Language", new String[]{"Hindi", "English"}, s.hindi() ? 0 : 1, i -> {
+                Ui.sheet(a, "Language", new String[]{"Hindi", "English"}, s.hindi() ? 0 : 1, i -> {
                     s.setHindi(i == 0);
                     s.setVoiceName("");
                     refresh();
@@ -121,7 +121,7 @@ class SettingsTab {
         c = section("Voice");
         toggle(c, R.drawable.ic_sparkle, PURPLE, "Natural voice", s::onlineVoice, s::setOnlineVoice);
         row(c, R.drawable.ic_clock, PURPLE, "Speaking speed", () -> SPEEDS[speedIndex(s.speechRate())], () ->
-                Ios.sheet(a, "How fast should she talk?", SPEEDS, speedIndex(s.speechRate()), i -> {
+                Ui.sheet(a, "How fast should she talk?", SPEEDS, speedIndex(s.speechRate()), i -> {
                     s.setSpeechRate(SPEED_PCT[i]);
                     refresh();
                     a.speaker().speak(Messages.testVoice(s, s.hindi()), s.onlineVoice(), s.hindi(), s.voiceName(), () -> { });
@@ -139,13 +139,13 @@ class SettingsTab {
         row(c, R.drawable.ic_clock, TEAL, "Test AI speed", () -> s.lastAi(), a::testAi);
         row(c, R.drawable.ic_key, GRAY, "API key", () -> s.aiKey().isEmpty() ? "None"
                 : s.aiKey().substring(0, Math.min(6, s.aiKey().length())) + "…", () ->
-                Ios.input(a, "API key", "Groq (gsk_…) or Gemini (AIza…). Leave empty for the free AI.", s.aiKey(), "gsk_…",
+                Ui.input(a, "API key", "Groq (gsk_…) or Gemini (AIza…). Leave empty for the free AI.", s.aiKey(), "gsk_…",
                         InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, true, val -> {
                             s.setAiKey(val);
                             refresh();
                         }));
         row(c, R.drawable.ic_sparkle, GRAY, "Model", s::aiModel, () ->
-                Ios.input(a, "Model", "Leave as is unless you know the exact model name.", s.aiModel(), "Model",
+                Ui.input(a, "Model", "Leave as is unless you know the exact model name.", s.aiModel(), "Model",
                         InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, true, val -> {
                             s.setAiModel(val);
                             refresh();
@@ -188,7 +188,7 @@ class SettingsTab {
 
         c = section("About");
         row(c, R.drawable.ic_delete, RED, "Clear conversation", () -> "", () ->
-                Ios.confirm(a, "Clear conversation?", "Messages will be removed. Tasks and journal stay.", "Clear", s::clearMessages));
+                Ui.confirm(a, "Clear conversation?", "Messages will be removed. Tasks and journal stay.", "Clear", s::clearMessages));
         Row v = row(c, R.drawable.ic_info, GRAY, "Version", this::version, null);
         v.value.setVisibility(View.VISIBLE);
     }
@@ -218,24 +218,26 @@ class SettingsTab {
     // ---------- building blocks ----------
 
     private void profileCard() {
-        LinearLayout card = Ios.groupCard(a, 16);
+        LinearLayout card = Ui.groupCard(a, 16);
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) card.getLayoutParams();
-        lp.topMargin = a.dp(14);
+        lp.topMargin = a.dp(10);
         LinearLayout row = new LinearLayout(a);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(a.dp(16), a.dp(12), a.dp(12), a.dp(12));
+        row.setPadding(a.dp(18), a.dp(18), a.dp(18), a.dp(18));
         row.setBackgroundResource(selectable());
         profileAvatar = new TextView(a);
         profileAvatar.setBackgroundResource(R.drawable.bg_avatar);
         profileAvatar.setGravity(Gravity.CENTER);
         profileAvatar.setTextColor(0xFFFFFFFF);
         profileAvatar.setTextSize(26);
-        row.addView(profileAvatar, new LinearLayout.LayoutParams(a.dp(60), a.dp(60)));
+        profileAvatar.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD));
+        row.addView(profileAvatar, new LinearLayout.LayoutParams(a.dp(58), a.dp(58)));
         LinearLayout texts = new LinearLayout(a);
         texts.setOrientation(LinearLayout.VERTICAL);
         texts.setPadding(a.dp(14), 0, 0, 0);
         profileName = new TextView(a);
-        profileName.setTextSize(22);
+        profileName.setTextSize(20);
+        profileName.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD));
         profileName.setTextColor(a.getColor(R.color.text));
         profileSub = new TextView(a);
         profileSub.setTextSize(13);
@@ -244,10 +246,10 @@ class SettingsTab {
         texts.addView(profileSub);
         row.addView(texts, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         ImageView chev = new ImageView(a);
-        chev.setImageResource(R.drawable.ic_chevron);
-        chev.setImageTintList(android.content.res.ColorStateList.valueOf(a.getColor(R.color.tertiary)));
+        chev.setImageResource(R.drawable.ic_edit);
+        chev.setImageTintList(android.content.res.ColorStateList.valueOf(a.getColor(R.color.muted)));
         row.addView(chev, new LinearLayout.LayoutParams(a.dp(20), a.dp(20)));
-        row.setOnClickListener(v -> Ios.input(a, "Her name", null, s.herName(), "Name",
+        row.setOnClickListener(v -> Ui.input(a, "Her name", null, s.herName(), "Name",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS, true, n -> {
                     if (!n.trim().isEmpty()) s.setHerName(n);
                     refresh();
@@ -257,22 +259,18 @@ class SettingsTab {
     }
 
     private LinearLayout section(String title) {
-        container.addView(Ios.sectionHeader(a, title));
-        LinearLayout card = Ios.groupCard(a, 59);
+        container.addView(Ui.sectionHeader(a, title));
+        LinearLayout card = Ui.groupCard(a, 70);
         container.addView(card);
         return card;
     }
 
     private void footer(String text) {
-        container.addView(Ios.sectionFooter(a, text));
+        container.addView(Ui.sectionFooter(a, text));
     }
 
     private Row row(LinearLayout card, int icon, int color, String title, Supplier<String> value, Runnable onClick) {
         View v = LayoutInflater.from(a).inflate(R.layout.item_row, card, false);
-        GradientDrawable sq = new GradientDrawable();
-        sq.setColor(color);
-        sq.setCornerRadius(a.dp(7));
-        v.findViewById(R.id.iconBox).setBackground(sq);
         ((ImageView) v.findViewById(R.id.icon)).setImageResource(icon);
         ((TextView) v.findViewById(R.id.title)).setText(title);
         Row r = new Row();
@@ -323,7 +321,7 @@ class SettingsTab {
             labels[i] = intervalLabel(INTERVALS[i]) + (INTERVALS[i] <= 2 ? " (testing)" : "");
             if (INTERVALS[i] == s.intervalMin()) checked = i;
         }
-        Ios.sheet(a, "How often should she call?", labels, checked, i -> {
+        Ui.sheet(a, "How often should she call?", labels, checked, i -> {
             s.setIntervalMin(INTERVALS[i]);
             a.reschedule();
             refresh();
@@ -335,7 +333,7 @@ class SettingsTab {
         String[] labels = new String[to - from + 1];
         for (int h = from; h <= to; h++) labels[h - from] = Store.hourLabel(h);
         int current = (start ? s.startHour() : s.endHour()) - from;
-        Ios.sheet(a, start ? "Calls start at" : "Calls stop at", labels, current, i -> {
+        Ui.sheet(a, start ? "Calls start at" : "Calls stop at", labels, current, i -> {
             if (start) s.setStartHour(i + from);
             else s.setEndHour(i + from);
             a.reschedule();
@@ -371,7 +369,7 @@ class SettingsTab {
             labels[i + 1] = voices.get(i).getName();
             if (voices.get(i).getName().equals(s.voiceName())) checked = i + 1;
         }
-        Ios.sheet(a, "Offline voice", labels, checked, i -> {
+        Ui.sheet(a, "Offline voice", labels, checked, i -> {
             String name = i == 0 ? "" : voices.get(i - 1).getName();
             s.setVoiceName(name);
             refresh();

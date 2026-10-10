@@ -1,23 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- iOS system palette (light) -->
-    <color name="bg">#F2F2F7</color>
-    <color name="chatBg">#FFFFFF</color>
+    <color name="bg">#F6F6F9</color>
+    <color name="chatBg">#F6F6F9</color>
     <color name="surface">#FFFFFF</color>
-    <color name="bar">#F9F9F9</color>
-    <color name="sheet">#F9F9F9</color>
-    <color name="separator">#C6C6C8</color>
-    <color name="text">#000000</color>
-    <color name="muted">#8A8A8E</color>
-    <color name="tertiary">#C4C4C7</color>
-    <color name="fill">#E9E9EA</color>
-    <color name="accent">#007AFF</color>
-    <color name="green">#34C759</color>
-    <color name="red">#FF3B30</color>
-    <color name="pink">#FF2D55</color>
-    <color name="bubbleAi">#E9E9EB</color>
+    <color name="surface2">#EDEDF2</color>
+    <color name="bar">#F6F6F9</color>
+    <color name="sheet">#FFFFFF</color>
+    <color name="separator">#E6E6EC</color>
+    <color name="text">#14141A</color>
+    <color name="muted">#6F6F7B</color>
+    <color name="tertiary">#B4B4BF</color>
+    <color name="fill">#DCDCE3</color>
+    <color name="accent">#F43F6E</color>
+    <color name="accentSoft">#FDE4EB</color>
+    <color name="green">#22C55E</color>
+    <color name="red">#EF4444</color>
+    <color name="pink">#F43F6E</color>
+    <color name="bubbleAi">#FFFFFF</color>
     <color name="onAccent">#FFFFFF</color>
-    <color name="brand">#FF2D55</color>
-    <color name="callBg">#121214</color>
+    <color name="brand">#F43F6E</color>
+    <color name="callBg">#0D0D11</color>
     <bool name="lightBars">true</bool>
 </resources>

@@ -10,7 +10,7 @@ Ek personal AI companion app jo girlfriend ki tarah aapka khayal rakhti hai, aur
 - Aap bhi usse call kar sakte ho (chat screen par phone icon)
 - **Care:** "Aap kaise ho? Khana khaya?", **Career:** "Aaj kya seekha?", **Tasks:** "Ye kaam hua ya nahi?"
 - Personality: Girlfriend (default), Best friend, Career coach
-- **iOS jaisa design:** iMessage chat, Reminders jaisa Tasks, iOS Settings, iOS toggles, light + dark mode
+- **Modern design:** floating pill navigation, rounded cards, rose accent, bottom sheets, light + dark mode
 - Testing ke liye **har 1 minute** ka interval bhi hai
 - Asli neural voice (Swara / Neerja), free AI bina key ke, Groq key optional
 
@@ -26,8 +26,9 @@ Har push par GitHub Actions APK build karke **Releases** me daal deta hai:
 3. **Display over other apps** allow karo (app khud poochhegi). Iske bina screen off hone par sirf ringtone bajti hai,
    screen on nahi hoti. Android 14+ par **Full-screen calls** bhi allow karo. Xiaomi par "Show on Lock screen" bhi
 4. **Free Groq key** lagao (Settings → AI → Get a free Groq key). Bina key ke free AI har jawab me 5-15 sec leta hai;
-   Groq key se 1 sec se kam aur zyada smart jawab. Gemini key (AIza…) bhi chalti hai
-5. Settings → Calls → **Test incoming call** dabao aur phone lock kar do, 5 sec me call aayegi
+   Groq key se 1 sec se kam aur zyada smart jawab. Gemini key (AIza…) bhi chalti hai. Model apne aap chuna jata hai
+   (app Groq/Gemini se available models ki list leti hai). **Test AI speed** asli error dikhata hai
+5. Settings → Calls → **Test incoming call** dabao, call turant aayegi
 4. Settings → Background reliability: sab "Allowed / Unrestricted" hona chahiye. Xiaomi/Oppo/Vivo/Realme par
    **Autostart** on karo aur Recent apps me app ko **Lock** karo
 5. Default time 7 AM se 12 AM (midnight) hai, Settings → Check-ins me badal sakte ho

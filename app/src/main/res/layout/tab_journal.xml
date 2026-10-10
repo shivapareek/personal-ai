@@ -12,29 +12,29 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingBottom="28dp">
-            <TextView
-                style="@style/LargeTitle"
-                android:id="@+id/titleJournal"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="20dp"
-                android:layout_marginTop="12dp"
-                android:text="Journal" />
+        android:paddingBottom="20dp">
+        <TextView
+            style="@style/LargeTitle"
+            android:id="@+id/titleJournal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="22dp"
+            android:text="Journal" />
 
-            <TextView
-                style="@style/Footnote"
-                android:id="@+id/textJournalSummary"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="20dp"
-                android:layout_marginBottom="6dp"
-                android:textSize="15sp" />
+        <TextView
+            style="@style/Footnote"
+            android:id="@+id/textJournalSummary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="2dp"
+            android:layout_marginBottom="8dp" />
 
-            <LinearLayout
-                android:id="@+id/journalList"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
+        <LinearLayout
+            android:id="@+id/journalList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
     </LinearLayout>
 </ScrollView>

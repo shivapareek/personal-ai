@@ -24,7 +24,7 @@ class HomeTab {
     private final MainActivity a;
     private final Store s;
     private final TextView avatar, herName, status, bannerTitle, bannerText, bannerButton;
-    private final View banner;
+    private final View banner, dot;
     private final LinearLayout chat;
     private final ScrollView scroll;
     private final EditText edit;
@@ -38,6 +38,7 @@ class HomeTab {
         herName = root.findViewById(R.id.textHerName);
         status = root.findViewById(R.id.textStatus);
         banner = root.findViewById(R.id.bannerAuto);
+        dot = root.findViewById(R.id.dotStatus);
         bannerTitle = root.findViewById(R.id.bannerTitle);
         bannerText = root.findViewById(R.id.bannerText);
         bannerButton = root.findViewById(R.id.bannerButton);
@@ -53,7 +54,7 @@ class HomeTab {
         });
         root.findViewById(R.id.headerCenter).setOnClickListener(v -> a.openTab(3));
         root.findViewById(R.id.headerCenter).setOnLongClickListener(v -> {
-            Ios.confirm(a, "Clear conversation?", "Messages will be removed. Tasks and journal stay.", "Clear", s::clearMessages);
+            Ui.confirm(a, "Clear conversation?", "Messages will be removed. Tasks and journal stay.", "Clear", s::clearMessages);
             return true;
         });
 
@@ -76,7 +77,7 @@ class HomeTab {
 
     void refresh() {
         String name = s.herName();
-        herName.setText(name + "  ›");
+        herName.setText(name);
         avatar.setText(name.substring(0, 1).toUpperCase(Locale.ROOT));
         refreshStatus();
         renderedKey = "";
@@ -119,30 +120,29 @@ class HomeTab {
                 long next = s.nextAt();
                 text = on && next > 0 ? (s.callStyle() ? "calls you " : "checks in ") + Store.timeLabel(next) : "";
         }
+        if (text.isEmpty()) text = on ? "Online" : "Calls are off";
         status.setText(text);
-        status.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
+        dot.setVisibility(on ? View.VISIBLE : View.GONE);
         boolean slowAi = AiClient.usingFreeAi(s);
         banner.setVisibility(!on || slowAi ? View.VISIBLE : View.GONE);
         if (!on) {
             bannerTitle.setText("Let her call you");
             bannerText.setText(s.herName() + (s.callStyle() ? " will call you every " : " will check on you every ")
                     + s.intervalMin() + (s.intervalMin() == 1 ? " minute" : " minutes") + " to see how you are doing.");
-            bannerButton.setText("Turn On");
+            bannerButton.setText("Turn on calls");
         } else {
             bannerTitle.setText("Make her reply instantly");
             bannerText.setText("The free AI takes 5 to 15 seconds. Add a free Groq key for instant, smarter replies.");
-            bannerButton.setText("Set Up");
+            bannerButton.setText("Add free key");
         }
         boolean listening = "listening".equals(state);
-        btnMic.setImageTintList(android.content.res.ColorStateList.valueOf(a.getColor(
-                listening ? R.color.red : edit.getText().length() > 0 ? android.R.color.white : R.color.muted)));
+        boolean hasText = edit.getText().toString().trim().length() > 0;
+        btnMic.setBackgroundResource(listening && !hasText ? R.drawable.bg_circle_red : R.drawable.bg_circle_accent);
     }
 
     private void updateSendButton() {
         boolean hasText = edit.getText().toString().trim().length() > 0;
-        btnMic.setImageResource(hasText ? R.drawable.ic_arrow_up : R.drawable.ic_mic);
-        btnMic.setBackgroundResource(hasText ? R.drawable.bg_circle_accent : 0);
-        btnMic.setPadding(hasText ? a.dp(4) : 0, hasText ? a.dp(4) : 0, hasText ? a.dp(4) : 0, hasText ? a.dp(4) : 0);
+        btnMic.setImageResource(hasText ? R.drawable.ic_send : R.drawable.ic_mic);
         btnMic.setContentDescription(hasText ? "Send" : "Talk");
         refreshStatus();
     }
@@ -156,7 +156,7 @@ class HomeTab {
         chat.removeAllViews();
 
         if (msgs.isEmpty() && !thinking) {
-            chat.addView(Ios.emptyState(a, "No messages yet",
+            chat.addView(Ui.emptyState(a, "No messages yet",
                     "Tap the phone to call " + s.herName() + ", or type a message below."));
             return;
         }
@@ -194,23 +194,29 @@ class HomeTab {
 
     private void addSystem(String text) {
         TextView tv = new TextView(a);
-        boolean missed = text.startsWith("Missed") || text.startsWith("Declined");
-        tv.setText((text.startsWith("Call") || missed ? "📞  " : "") + text);
-        tv.setTextSize(13);
+        boolean missed = text.startsWith("Missed") || text.startsWith("Declined") || text.startsWith("AI did not");
+        tv.setText(text);
+        tv.setTextSize(12);
         tv.setTextColor(a.getColor(missed ? R.color.red : R.color.muted));
+        tv.setBackgroundResource(R.drawable.bg_pill_soft);
+        tv.setPadding(a.dp(14), a.dp(6), a.dp(14), a.dp(6));
         tv.setGravity(Gravity.CENTER);
-        tv.setPadding(0, a.dp(8), 0, a.dp(8));
-        chat.addView(tv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        tv.setMaxWidth((int) (a.getResources().getDisplayMetrics().widthPixels * 0.85f));
+        LinearLayout row = new LinearLayout(a);
+        row.setGravity(Gravity.CENTER_HORIZONTAL);
+        row.setPadding(0, a.dp(8), 0, a.dp(4));
+        row.addView(tv);
+        chat.addView(row, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
     }
 
     private void addBubble(String text, boolean ai, int maxWidth, boolean placeholder, boolean tight) {
         TextView tv = new TextView(a);
         tv.setText(text);
-        tv.setTextSize(17);
-        tv.setLineSpacing(0, 1.1f);
+        tv.setTextSize(16);
+        tv.setLineSpacing(0, 1.15f);
         tv.setTextColor(a.getColor(placeholder ? R.color.muted : ai ? R.color.text : R.color.onAccent));
         tv.setMaxWidth(maxWidth);
-        tv.setPadding(a.dp(13), a.dp(8), a.dp(13), a.dp(8));
+        tv.setPadding(a.dp(16), a.dp(11), a.dp(16), a.dp(11));
         tv.setBackgroundResource(ai ? R.drawable.bg_bubble_ai : R.drawable.bg_bubble_user);
         tv.setTextIsSelectable(!placeholder);
         LinearLayout row = new LinearLayout(a);
@@ -218,7 +224,7 @@ class HomeTab {
         row.addView(tv);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = a.dp(tight ? 2 : 8);
+        lp.topMargin = a.dp(tight ? 3 : 10);
         chat.addView(row, lp);
     }
 

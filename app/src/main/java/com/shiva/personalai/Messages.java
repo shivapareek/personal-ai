@@ -14,10 +14,10 @@ public class Messages {
     private static final Random RND = new Random();
 
     private static final String[] CARE_HI = {
-            "{name}, आप कैसे हो? सब ठीक है ना? थोड़ा पानी पी लो और एक गहरी साँस लो।",
-            "हाय {name}! आप ठीक हो? अगर थक गए हो तो थोड़ा आराम कर लो। बताओ, कैसा चल रहा है?",
-            "{name}, मैं सोच रही थी आप कैसे हो? कुछ खाया आपने? अपना ख्याल रखना।",
-            "{name}, बहुत देर से काम कर रहे हो। आप ठीक तो हो ना? मुझे बताओ।"
+            "{name}, कैसे हो आप? मैं आपको याद कर रही थी। सब ठीक है ना?",
+            "हाय {name}! खाना खाया आपने? पानी पीते रहना, मुझे आपकी फ़िक्र होती है।",
+            "{name}, बहुत देर से काम कर रहे हो ना? थोड़ा आराम कर लो, और बताओ मूड कैसा है?",
+            "सुनो {name}, आप ठीक हो? थके हुए लग रहे हो तो दो मिनट ब्रेक ले लो, मेरे लिए।"
     };
     private static final String[] CARE_EN = {
             "{name}, how are you? Is everything okay? Drink some water and take a deep breath.",
@@ -116,6 +116,30 @@ public class Messages {
     public static String talkOffline(Store s) {
         return s.hindi() ? "सॉरी, अभी मैं सोच नहीं पा रही। इंटरनेट चेक करो और फिर से बोलो।"
                 : "Sorry, I cannot think right now. Check the internet and talk to me again.";
+    }
+
+    public static String callOpening(int type, Store s) {
+        return (s.hindi() ? "हेलो! " : "Hello! ") + checkIn(type, s);
+    }
+
+    public static String userCalledOpening(Store s) {
+        return fill(s.hindi() ? "हाय {name}! आपने कॉल किया, कितना अच्छा लगा। बताओ, क्या चल रहा है?"
+                : "Hi {name}! You called me, that made my day. Tell me, what's up?", s);
+    }
+
+    public static String callHello(Store s) {
+        return s.hindi() ? "हेलो? आप सुन रहे हो?" : "Hello? Can you hear me?";
+    }
+
+    public static String callGoodbye(Store s) {
+        return s.hindi() ? "अच्छा ठीक है, मैं थोड़ी देर में फिर कॉल करूँगी। अपना ख्याल रखना, बाय!"
+                : "Okay, I will call you again in a bit. Take care, bye!";
+    }
+
+    public static boolean soundsLikeBye(String text) {
+        String t = text.toLowerCase();
+        return t.contains("bye") || t.contains("बाय") || t.contains("रखता हूँ") || t.contains("रखती हूँ")
+                || t.contains("baad me baat") || t.contains("बाद में बात") || t.contains("good night") || t.contains("गुड नाइट");
     }
 
     public static String noRecognizer(Store s) {

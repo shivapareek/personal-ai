@@ -2,7 +2,6 @@ package com.shiva.personalai;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -15,8 +14,6 @@ import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
-import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -24,10 +21,9 @@ import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Single-activity app with a bottom navigation bar: Home (conversation), Tasks, Journal, Settings. */
+/** Single-activity app with an iOS-style tab bar: Chat, Tasks, Journal, Settings. */
 public class MainActivity extends Activity {
 
-    public static volatile boolean visible;
     public static final String EXTRA_REPLY = "reply";
 
     private Store store;
@@ -37,16 +33,20 @@ public class MainActivity extends Activity {
     private JournalTab journal;
     private SettingsTab settings;
     private final View[] tabs = new View[4];
-    private final View[] pills = new View[4];
     private final ImageView[] icons = new ImageView[4];
     private final TextView[] labels = new TextView[4];
+    private TextView badge;
     private int current;
 
     private final SharedPreferences.OnSharedPreferenceChangeListener prefsListener = (p, key) -> {
         if (key == null) return;
         home.onPrefChanged(key);
-        if ("todos".equals(key)) tasks.refresh();
+        if ("todos".equals(key)) {
+            tasks.refresh();
+            updateBadge();
+        }
         if ("learnings".equals(key)) journal.refresh();
+        if (Store.KEY_SERVICE_ON.equals(key) || Store.KEY_NEXT_AT.equals(key)) settings.refresh();
     };
 
     @Override
@@ -61,16 +61,15 @@ public class MainActivity extends Activity {
         tabs[2] = findViewById(R.id.tabJournal);
         tabs[3] = findViewById(R.id.tabSettings);
         int[] nav = {R.id.navHome, R.id.navTasks, R.id.navJournal, R.id.navSettings};
-        int[] pill = {R.id.navHomePill, R.id.navTasksPill, R.id.navJournalPill, R.id.navSettingsPill};
         int[] icon = {R.id.navHomeIcon, R.id.navTasksIcon, R.id.navJournalIcon, R.id.navSettingsIcon};
         int[] label = {R.id.navHomeLabel, R.id.navTasksLabel, R.id.navJournalLabel, R.id.navSettingsLabel};
         for (int i = 0; i < 4; i++) {
             final int idx = i;
-            pills[i] = findViewById(pill[i]);
             icons[i] = findViewById(icon[i]);
             labels[i] = findViewById(label[i]);
             findViewById(nav[i]).setOnClickListener(v -> openTab(idx));
         }
+        badge = findViewById(R.id.navBadge);
 
         home = new HomeTab(this, tabs[0]);
         tasks = new TasksTab(this, tabs[1]);
@@ -90,20 +89,26 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        visible = true;
+        Foreground.resumed();
         store.prefs().registerOnSharedPreferenceChangeListener(prefsListener);
         home.refresh();
         tasks.refresh();
         journal.refresh();
         settings.refresh();
-        // While the app is on screen the service may (re)acquire microphone access for background replies.
+        updateBadge();
         if (store.serviceOn()) CheckInService.send(this, CheckInService.ACTION_RESTART);
+        if (!CheckInService.running) {
+            store.setCallState("none");
+            store.setState("idle");
+        } else if (!"none".equals(store.callState())) {
+            openCallScreen(null);
+        }
         handleIntent(getIntent());
     }
 
     @Override
     protected void onPause() {
-        visible = false;
+        Foreground.paused();
         store.prefs().unregisterOnSharedPreferenceChangeListener(prefsListener);
         super.onPause();
     }
@@ -138,12 +143,17 @@ public class MainActivity extends Activity {
         for (int j = 0; j < 4; j++) {
             boolean sel = j == i;
             tabs[j].setVisibility(sel ? View.VISIBLE : View.GONE);
-            pills[j].setBackgroundResource(sel ? R.drawable.bg_nav_pill : 0);
             icons[j].setImageTintList(ColorStateList.valueOf(sel ? accent : muted));
-            labels[j].setTextColor(sel ? getColor(R.color.text) : muted);
+            labels[j].setTextColor(sel ? accent : muted);
         }
         InputMethodManager imm = getSystemService(InputMethodManager.class);
         if (imm != null) imm.hideSoftInputFromWindow(tabs[i].getWindowToken(), 0);
+    }
+
+    private void updateBadge() {
+        int n = store.pendingTexts().size();
+        badge.setVisibility(n > 0 ? View.VISIBLE : View.GONE);
+        badge.setText(n > 99 ? "99+" : String.valueOf(n));
     }
 
     // ---------- actions used by the tabs ----------
@@ -156,24 +166,33 @@ public class MainActivity extends Activity {
         if (text == null && !ensureMic()) return;
         Intent i = new Intent(this, CheckInService.class).setAction(CheckInService.ACTION_TALK);
         if (text != null) i.putExtra(CheckInService.EXTRA_TEXT, text);
-        try {
-            startForegroundService(i);
-        } catch (Exception e) {
-            Toast.makeText(this, "Could not start the assistant", Toast.LENGTH_SHORT).show();
-        }
+        CheckInService.send(this, i);
     }
 
-    void checkInNow() {
+    /** User phones her. */
+    void callHer() {
+        if (!ensureMic()) return;
+        openCallScreen(CallActivity.ACTION_OUTGOING);
+    }
+
+    /** She phones the user right now (test the incoming call). */
+    void testIncomingCall() {
+        requestRuntimePermissions();
         CheckInService.send(this, CheckInService.ACTION_CHECK_IN);
+    }
+
+    void openCallScreen(String action) {
+        Intent i = new Intent(this, CallActivity.class);
+        if (action != null) i.setAction(action);
+        startActivity(i);
     }
 
     void setAuto(boolean on) {
         if (on) {
             requestRuntimePermissions();
-            Intent i = new Intent(this, CheckInService.class).setAction(CheckInService.ACTION_START)
-                    .putExtra(CheckInService.EXTRA_GREET, true);
             store.setServiceOn(true);
-            startForegroundService(i);
+            CheckInService.send(this, new Intent(this, CheckInService.class)
+                    .setAction(CheckInService.ACTION_START).putExtra(CheckInService.EXTRA_GREET, true));
             askBatteryOptimization();
         } else {
             store.setServiceOn(false);
@@ -242,27 +261,14 @@ public class MainActivity extends Activity {
     // ---------- onboarding ----------
 
     private void showOnboarding() {
-        EditText input = new EditText(this);
-        input.setHint("Your name");
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
-        input.setText(store.name());
-        FrameLayout box = new FrameLayout(this);
-        int pad = dp(20);
-        box.setPadding(pad, dp(8), pad, 0);
-        box.addView(input);
-        new AlertDialog.Builder(this)
-                .setTitle("Welcome")
-                .setMessage("What should " + store.herName() + " call you?")
-                .setView(box)
-                .setCancelable(false)
-                .setPositiveButton("Continue", (d, w) -> {
-                    store.setName(input.getText().toString());
+        Ios.input(this, "Welcome", "What should " + store.herName() + " call you?", store.name(), "Your name",
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS, false, name -> {
+                    store.setName(name);
                     store.setOnboarded();
                     requestRuntimePermissions();
                     home.refresh();
                     settings.refresh();
-                })
-                .show();
+                });
     }
 
     int dp(int v) {

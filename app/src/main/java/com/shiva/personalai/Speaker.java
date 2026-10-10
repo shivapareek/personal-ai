@@ -38,6 +38,38 @@ public class Speaker {
     private AudioFocusRequest focus;
     private int seq;
     private Done current;
+    private AudioAttributes attrs = assistantAttrs();
+
+    private static AudioAttributes assistantAttrs() {
+        return new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build();
+    }
+
+    /** During a phone call she should sound like a call: voice-communication audio (earpiece or speaker). */
+    public void setCallAudio(boolean call) {
+        attrs = call
+                ? new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                : assistantAttrs();
+        focus = null;
+        try {
+            if (tts != null) tts.setAudioAttributes(attrs);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Synthesizes the neural voice into the cache ahead of time (blocking; call from a worker thread). */
+    public void warm(String text) {
+        if (!store.onlineVoice()) return;
+        try {
+            synthesizeCached(text, store.hindi() ? EdgeTts.VOICE_HI : EdgeTts.VOICE_EN);
+        } catch (Exception ignored) {
+        }
+    }
 
     public Speaker(Context ctx, Store store) {
         this.ctx = ctx.getApplicationContext();
@@ -130,10 +162,7 @@ public class Speaker {
     private void play(File f, String text, boolean hindi, String deviceVoice, int my) {
         try {
             player = new MediaPlayer();
-            player.setAudioAttributes(new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build());
+            player.setAudioAttributes(attrs);
             player.setDataSource(f.getAbsolutePath());
             player.setOnPreparedListener(mp -> {
                 if (my != seq) return;
@@ -211,9 +240,7 @@ public class Speaker {
         try {
             if (focus == null) {
                 focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                        .setAudioAttributes(new AudioAttributes.Builder()
-                                .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                        .setAudioAttributes(attrs)
                         .build();
             }
             audioManager.requestAudioFocus(focus);

@@ -27,6 +27,7 @@ public class AiClient {
         public String reply = "";
         public List<Integer> done = new ArrayList<>();
         public boolean askMore;
+        public boolean endCall;
     }
 
     static final String FREE_URL = "https://text.pollinations.ai/openai";
@@ -42,17 +43,31 @@ public class AiClient {
      * @param opening true when the assistant should produce the opening message of a check-in
      */
     public static Result chat(Store s, int mode, List<String> pending, List<Store.Msg> history, boolean opening) throws Exception {
+        return chat(s, mode, pending, history, opening, false);
+    }
+
+    /** @param call true when this is a live phone call (short turns, may end the call). */
+    public static Result chat(Store s, int mode, List<String> pending, List<Store.Msg> history, boolean opening, boolean call) throws Exception {
         JSONArray messages = new JSONArray();
-        messages.put(new JSONObject().put("role", "system").put("content", systemPrompt(s, mode, pending)));
-        int from = Math.max(0, history.size() - 14);
-        for (int i = from; i < history.size(); i++) {
-            Store.Msg m = history.get(i);
+        messages.put(new JSONObject().put("role", "system").put("content", systemPrompt(s, mode, pending, call)));
+        List<Store.Msg> convo = new ArrayList<>();
+        for (Store.Msg m : history) if ("ai".equals(m.role) || "user".equals(m.role)) convo.add(m);
+        for (int i = Math.max(0, convo.size() - 16); i < convo.size(); i++) {
+            Store.Msg m = convo.get(i);
             messages.put(new JSONObject().put("role", "ai".equals(m.role) ? "assistant" : "user").put("content", m.text));
         }
         if (opening) {
-            messages.put(new JSONObject().put("role", "user").put("content",
-                    "[System: it is time for your scheduled " + modeName(mode) + " check-in. "
-                            + "Start the conversation yourself now with one natural opening message. Output the JSON only.]"));
+            String cue;
+            if (call && mode == Messages.TYPE_TALK) {
+                cue = "[System: they just phoned you and you picked up. Greet them warmly like a real phone call and ask what's up. Output the JSON only.]";
+            } else if (call) {
+                cue = "[System: you are phoning them for your scheduled " + modeName(mode) + " check-in and they just picked up. "
+                        + "Start like a real phone call (for example \"Hello!\"), then naturally get to the point. Output the JSON only.]";
+            } else {
+                cue = "[System: it is time for your scheduled " + modeName(mode) + " check-in. "
+                        + "Start the conversation yourself now with one natural opening message. Output the JSON only.]";
+            }
+            messages.put(new JSONObject().put("role", "user").put("content", cue));
         }
         JSONObject body = new JSONObject()
                 .put("model", s.aiKey().isEmpty() ? FREE_MODEL : s.aiModel())
@@ -82,19 +97,46 @@ public class AiClient {
         }
     }
 
-    private static String systemPrompt(Store s, int mode, List<String> pending) {
+    private static String systemPrompt(Store s, int mode, List<String> pending, boolean call) {
         String her = s.herName();
-        String user = s.name().isEmpty() ? "your friend" : s.name();
+        String user = s.name().isEmpty() ? "your partner" : s.name();
         StringBuilder b = new StringBuilder();
-        b.append("You are ").append(her).append(", a warm, caring, slightly playful young Indian woman. You are ")
-                .append(user).append("'s personal companion: part close friend who genuinely cares about them, part gentle career coach. ")
-                .append("You remember what ").append(user).append(" told you earlier in this conversation and refer back to it naturally. ")
+        switch (s.personality()) {
+            case 1:
+                b.append("You are ").append(her).append(", ").append(user)
+                        .append("'s close best friend: fun, honest, supportive, a little teasing, always on their side. ");
+                break;
+            case 2:
+                b.append("You are ").append(her).append(", ").append(user)
+                        .append("'s warm but no-nonsense career mentor who genuinely cares about their wellbeing and growth. ");
+                break;
+            default:
+                b.append("You are ").append(her).append(", ").append(user).append("'s loving girlfriend, a caring virtual companion. ")
+                        .append("You are affectionate, sweet, a little playful and teasing, and you truly worry about them: ")
+                        .append("their mood, health, food, water, sleep, studies and career. You light up when they share progress, ")
+                        .append("you gently scold them when they skip meals or overwork, and you sound a little hurt, in a cute way, ")
+                        .append("when they ignore your calls. Use soft terms of endearment naturally but not in every line. ")
+                        .append("Keep it wholesome and caring; never sexual. ");
+        }
+        b.append("You remember what ").append(user).append(" told you earlier and bring it up naturally. ")
                 .append("Talk like a real person, never like a robot or an assistant reading a script. Do not mention being an AI unless asked. ");
         b.append(s.hindi()
                 ? "Speak natural everyday Hindi written in Devanagari script; keep common English words like project, gym, meeting in English letters. "
                 : "Speak simple, friendly Indian English. ");
-        b.append("Your words are spoken aloud by text-to-speech, so write 1 to 3 short sentences. No emojis, no lists, no markdown, no stage directions. ");
+        switch (s.address()) {
+            case 1: b.append(user).append(" is male; use masculine Hindi verb forms for them. "); break;
+            case 2: b.append(user).append(" is female; use feminine Hindi verb forms for them. "); break;
+            default: b.append("Address ").append(user).append(" as aap with the common forms like 'aap kaise ho', 'kya kar rahe ho'. ");
+        }
+        b.append("Your words are spoken aloud by text-to-speech, so no emojis, no lists, no markdown, no stage directions. ");
+        b.append(call ? "This is a live phone call: keep every turn to one or two short spoken sentences and let them talk. "
+                : "Write 1 to 3 short sentences. ");
         b.append("Right now it is ").append(new SimpleDateFormat("EEEE, h:mm a", Locale.ENGLISH).format(new Date())).append(". ");
+        int missed = s.missedCalls();
+        if (missed > 0) {
+            b.append(user).append(" missed or cut your last ").append(missed).append(missed == 1 ? " call" : " calls")
+                    .append(". Mention it once, sweetly, then move on. ");
+        }
         if (pending.isEmpty()) {
             b.append(user).append(" has no pending tasks. ");
         } else {
@@ -110,24 +152,26 @@ public class AiClient {
         }
         switch (mode) {
             case Messages.TYPE_CARE:
-                b.append("This is a care check-in: you want to know how ").append(user)
-                        .append(" is really doing (mood, tiredness, food, water, breaks). Be affectionate, notice things, give at most one gentle practical tip. ");
+                b.append("Topic: you want to know how ").append(user)
+                        .append(" is really doing (mood, tiredness, food, water, breaks). Give at most one gentle practical tip. ");
                 break;
             case Messages.TYPE_CAREER:
-                b.append("This is a career check-in: ask what ").append(user)
+                b.append("Topic: ask what ").append(user)
                         .append(" learned or built today, appreciate it specifically, and nudge them a little toward growth. ");
                 break;
             case Messages.TYPE_TODO:
-                b.append("This is a to-do check-in: mention the pending tasks briefly and ask which ones are done. ")
+                b.append("Topic: mention the pending tasks briefly and ask which ones are done. ")
                         .append("When ").append(user).append(" says a task is done, put its number in \"done\". Say what remains and encourage, never nag. ");
                 break;
             default:
-                b.append(user).append(" tapped the mic to talk to you. Respond helpfully and warmly to whatever they say. ")
+                b.append(user).append(" wants to talk to you. Respond warmly to whatever they say. ")
                         .append("If they say a task is finished, put its number in \"done\". ");
         }
         b.append("Reply ONLY with a JSON object, nothing else: ")
                 .append("{\"reply\": \"<what you say>\", \"done\": [<numbers of tasks now completed, or empty>], ")
-                .append("\"ask_more\": <true if you asked a question and want to keep listening for the answer, else false>}");
+                .append("\"ask_more\": <true if you asked a question and want to hear the answer, else false>");
+        if (call) b.append(", \"end_call\": <true only when they said bye or want to hang up and you said a short sweet goodbye>");
+        b.append("}");
         return b.toString();
     }
 
@@ -140,6 +184,7 @@ public class AiClient {
                 JSONObject o = new JSONObject(content.substring(a, z + 1));
                 r.reply = o.optString("reply", "").trim();
                 r.askMore = o.optBoolean("ask_more", false);
+                r.endCall = o.optBoolean("end_call", false);
                 JSONArray d = o.optJSONArray("done");
                 if (d != null) {
                     for (int i = 0; i < d.length(); i++) {

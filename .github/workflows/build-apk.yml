@@ -63,7 +63,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v3.0-build${{ github.run_number }}"
+          TAG="v4.0-build${{ github.run_number }}"
           gh release create "$TAG" PersonalAI.apk \
             --repo "${{ github.repository }}" \
             --title "Personal AI APK (build ${{ github.run_number }})" \

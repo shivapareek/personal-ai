@@ -1,18 +1,18 @@
 # Personal AI (Android)
 
-Ek personal AI companion app: ek ladki ki asli jaisi awaaz me wo khud aapse baat karti hai, aapka khayal
-rakhti hai, career ke baare me puchti hai aur aapki todo list follow-up karti hai.
+Ek personal AI companion app jo girlfriend ki tarah aapka khayal rakhti hai, aur **phone call karke** baat karti hai.
 
-- **Khud puchti hai** (auto check-in har 30 min, time aap set karo): "Aap kaise ho?", "Aaj kya seekha?",
-  "Ye kaam baaki hain, konsa ho gaya?"
-- **Aapka jawab sunti hai** (mic) aur AI se natural reply deti hai, baat aage badhati hai, pichhli baatein yaad rakhti hai
-- **Todo list** bolne par tick ho jaati hai ("pehla ho gaya", "gym done")
-- **Mic dabao** aur kuch bhi baat karo
-- **Asli neural voice** (Microsoft Edge ki free Swara / Neerja voice), net na ho to phone ki voice
-- **Free AI** bina key ke (Pollinations). Behtar AI ke liye Groq ki free key (optional)
-- Professional flat UI (light + dark mode), bottom navigation: Home, Tasks, Journal, Settings
-- Background reliable: exact alarms, foreground service, recent apps se hatane par restart, reboot ke baad wapas,
-  har 15 min safety-net job, check-in ka message notification me bhi dikhta hai (Reply button ke saath)
+- **Asli jaisi call:** set interval par phone bajta hai (aapki ringtone + vibration), lock screen par iPhone jaisi
+  incoming call screen aati hai. **Accept** karo to wo turant baat shuru karti hai, **Decline** ya miss karo to
+  interval ke baad phir se call karti hai, aur agli call me pyaar se shikayat bhi karti hai
+- **Remind Me** dabao to 5 min baad call karegi; **Message** dabao to chat khul jaati hai
+- Call ke dauraan: mute, speaker, timer, "bye" bolo to wo pyaar se call rakh deti hai
+- Aap bhi usse call kar sakte ho (chat screen par phone icon)
+- **Care:** "Aap kaise ho? Khana khaya?", **Career:** "Aaj kya seekha?", **Tasks:** "Ye kaam hua ya nahi?"
+- Personality: Girlfriend (default), Best friend, Career coach
+- **iOS jaisa design:** iMessage chat, Reminders jaisa Tasks, iOS Settings, iOS toggles, light + dark mode
+- Testing ke liye **har 1 minute** ka interval bhi hai
+- Asli neural voice (Swara / Neerja), free AI bina key ke, Groq key optional
 
 ## APK
 
@@ -22,8 +22,8 @@ Har push par GitHub Actions APK build karke **Releases** me daal deta hai:
 ## Setup
 
 1. Install karo, apna naam likho, mic + notification permission do
-2. Home par switch on karo. Battery popup aaye to **Allow**
-3. Wo turant hello bolegi. Mic dabao aur jawab do, ya type karo. **Check in now** se kabhi bhi test karo
+2. Chat screen par **Turn On** dabao. Battery popup aaye to **Allow**. Wo turant call karegi
+3. Settings → Calls → **Frequency → Every minute** se testing karo, ya **Test incoming call** dabao
 4. Settings → Background reliability: sab "Allowed / Unrestricted" hona chahiye. Xiaomi/Oppo/Vivo/Realme par
    **Autostart** on karo aur Recent apps me app ko **Lock** karo
 5. Default time 7 AM se 12 AM (midnight) hai, Settings → Check-ins me badal sakte ho

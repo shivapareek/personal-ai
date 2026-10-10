@@ -1,14 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#0F1012</color>
-    <color name="surface">#17191C</color>
-    <color name="surface2">#202327</color>
-    <color name="stroke">#2B2E33</color>
-    <color name="text">#ECEDEE</color>
-    <color name="muted">#9BA1A6</color>
-    <color name="accent">#2BB3A3</color>
-    <color name="accentSoft">#15302D</color>
-    <color name="onAccent">#06201D</color>
-    <color name="danger">#F87171</color>
+    <!-- iOS system palette (dark) -->
+    <color name="bg">#000000</color>
+    <color name="chatBg">#000000</color>
+    <color name="surface">#1C1C1E</color>
+    <color name="bar">#161618</color>
+    <color name="sheet">#2C2C2E</color>
+    <color name="separator">#38383A</color>
+    <color name="text">#FFFFFF</color>
+    <color name="muted">#8D8D93</color>
+    <color name="tertiary">#48484A</color>
+    <color name="fill">#39393D</color>
+    <color name="accent">#0A84FF</color>
+    <color name="green">#30D158</color>
+    <color name="red">#FF453A</color>
+    <color name="pink">#FF375F</color>
+    <color name="bubbleAi">#26252A</color>
+    <color name="onAccent">#FFFFFF</color>
     <bool name="lightBars">false</bool>
 </resources>

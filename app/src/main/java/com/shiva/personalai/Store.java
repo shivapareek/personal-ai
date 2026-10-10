@@ -45,6 +45,9 @@ public class Store {
     public static final String KEY_STATE = "state";
     public static final String KEY_NEXT_AT = "nextAt";
     public static final String KEY_SERVICE_ON = "serviceOn";
+    public static final String KEY_CALL = "callState";
+    public static final String KEY_MUTED = "muted";
+    public static final String KEY_SPEAKER = "speakerOn";
 
     private final SharedPreferences p;
 
@@ -118,6 +121,34 @@ public class Store {
     public void setState(String s) { p.edit().putString(KEY_STATE, s).apply(); }
     public long nextAt() { return p.getLong(KEY_NEXT_AT, 0); }
     public void setNextAt(long t) { p.edit().putLong(KEY_NEXT_AT, t).apply(); }
+
+    // ---- calls ----
+    public boolean callStyle() { return p.getBoolean("callStyle", true); }
+    public void setCallStyle(boolean v) { p.edit().putBoolean("callStyle", v).apply(); }
+    public boolean speakerDefault() { return p.getBoolean("speakerDefault", false); }
+    public void setSpeakerDefault(boolean v) { p.edit().putBoolean("speakerDefault", v).apply(); }
+    /** none / ringing / outgoing / active */
+    public String callState() { return p.getString(KEY_CALL, "none"); }
+    public void setCallState(String v) { p.edit().putString(KEY_CALL, v).apply(); }
+    public long callStart() { return p.getLong("callStart", 0); }
+    public void setCallStart(long v) { p.edit().putLong("callStart", v).apply(); }
+    public boolean muted() { return p.getBoolean(KEY_MUTED, false); }
+    public void setMuted(boolean v) { p.edit().putBoolean(KEY_MUTED, v).apply(); }
+    public boolean speakerOn() { return p.getBoolean(KEY_SPEAKER, false); }
+    public void setSpeakerOn(boolean v) { p.edit().putBoolean(KEY_SPEAKER, v).apply(); }
+    public int missedCalls() { return p.getInt("missedCalls", 0); }
+    public void setMissedCalls(int v) { p.edit().putInt("missedCalls", v).apply(); }
+    public void incMissedCalls() { setMissedCalls(missedCalls() + 1); }
+
+    /** 0 = girlfriend, 1 = best friend, 2 = career coach */
+    public int personality() { return p.getInt("personality", 0); }
+    public void setPersonality(int v) { p.edit().putInt("personality", v).apply(); }
+    /** How Hindi grammar addresses the user: 0 = neutral "aap", 1 = male, 2 = female */
+    public int address() { return p.getInt("address", 0); }
+    public void setAddress(int v) { p.edit().putInt("address", v).apply(); }
+
+    public int peekType() { return p.getInt("type", 0) % 3; }
+    public void advanceType() { p.edit().putInt("type", (peekType() + 1) % 3).apply(); }
 
     /** Returns the next check-in type (care / career / todo) and rotates to the following one. */
     public int nextTypeAndAdvance() {

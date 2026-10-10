@@ -1,20 +1,20 @@
 package com.shiva.personalai;
 
 import android.app.AlarmManager;
-import android.app.AlertDialog;
 import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
 import android.text.InputType;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.widget.EditText;
-import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -24,17 +24,22 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 
-/** Settings: grouped rows, every change is saved immediately. */
+/** iOS Settings-style screen: inset grouped rows with colored icon squares; changes apply instantly. */
 class SettingsTab {
 
-    private static final int[] INTERVALS = {10, 15, 20, 30, 45, 60, 90, 120};
+    private static final int[] INTERVALS = {1, 2, 5, 10, 15, 20, 30, 45, 60, 90, 120};
+    private static final String[] PERSONALITIES = {"Girlfriend", "Best friend", "Career coach"};
+    private static final String[] ADDRESS = {"Aap (neutral)", "Male", "Female"};
+
+    // iOS system colors for the icon squares
+    private static final int BLUE = 0xFF007AFF, GREEN = 0xFF34C759, ORANGE = 0xFFFF9500, RED = 0xFFFF3B30,
+            PINK = 0xFFFF2D55, PURPLE = 0xFFAF52DE, INDIGO = 0xFF5856D6, GRAY = 0xFF8E8E93, TEAL = 0xFF30B0C7;
 
     private static class Row {
-        TextView subtitle;
-        Supplier<String> sub;
+        TextView value;
+        Supplier<String> text;
         Switch sw;
         Supplier<Boolean> checked;
     }
@@ -43,7 +48,7 @@ class SettingsTab {
     private final Store s;
     private final LinearLayout container;
     private final List<Row> rows = new ArrayList<>();
-    private LinearLayout card;
+    private TextView profileName, profileSub, profileAvatar;
     private boolean updating;
     private TextToSpeech tts;
 
@@ -61,52 +66,99 @@ class SettingsTab {
     // ---------- content ----------
 
     private void build() {
-        section("Profile");
-        row("Your name", () -> s.name().isEmpty() ? "Not set" : s.name(),
-                () -> edit("Your name", s.name(), InputType.TYPE_TEXT_FLAG_CAP_WORDS, s::setName));
-        row("Assistant name", s::herName,
-                () -> edit("Assistant name", s.herName(), InputType.TYPE_TEXT_FLAG_CAP_WORDS, s::setHerName));
+        profileCard();
 
-        section("Check-ins");
-        row("Frequency", () -> "Every " + s.intervalMin() + " minutes", this::pickInterval);
-        row("Active from", () -> Store.hourLabel(s.startHour()), () -> pickHour(true));
-        row("Active until", () -> Store.hourLabel(s.endHour()), () -> pickHour(false));
-        toggle("Listen for my reply", () -> "Opens the microphone after she asks a question",
-                s::listen, s::setListen);
+        LinearLayout c = section("Calls");
+        toggle(c, R.drawable.ic_call, GREEN, "Automatic calls", s::serviceOn, on -> {
+            a.setAuto(on);
+            refresh();
+        });
+        row(c, R.drawable.ic_chat, BLUE, "Check-in style", () -> s.callStyle() ? "Phone call" : "Voice message", () ->
+                Ios.sheet(a, "How should she check in?", new String[]{"Phone call", "Voice message"}, s.callStyle() ? 0 : 1, i -> {
+                    s.setCallStyle(i == 0);
+                    refresh();
+                }));
+        row(c, R.drawable.ic_clock, ORANGE, "Frequency", () -> intervalLabel(s.intervalMin()), this::pickInterval);
+        row(c, R.drawable.ic_moon, INDIGO, "Active from", () -> Store.hourLabel(s.startHour()), () -> pickHour(true));
+        row(c, R.drawable.ic_moon, INDIGO, "Active until", () -> Store.hourLabel(s.endHour()), () -> pickHour(false));
+        row(c, R.drawable.ic_call, GREEN, "Test incoming call", () -> "", a::testIncomingCall);
+        toggle(c, R.drawable.ic_volume, GRAY, "Start calls on speaker", s::speakerDefault, s::setSpeakerDefault);
+        toggle(c, R.drawable.ic_mic, RED, "Listen for my reply", s::listen, s::setListen);
+        footer("If you miss or decline her call, she calls again after this interval. "
+                + "Every minute is meant for testing; Android may delay very frequent alarms while the phone is idle.");
 
-        section("Voice");
-        row("Language", () -> s.hindi() ? "Hindi" : "English", () ->
-                choose("Language", new String[]{"Hindi", "English"}, s.hindi() ? 0 : 1, i -> {
+        c = section("Companion");
+        row(c, R.drawable.ic_heart, PINK, "Personality", () -> PERSONALITIES[s.personality()], () ->
+                Ios.sheet(a, "Personality", PERSONALITIES, s.personality(), i -> {
+                    s.setPersonality(i);
+                    refresh();
+                }));
+        row(c, R.drawable.ic_person, GRAY, "Your name", () -> s.name().isEmpty() ? "Not set" : s.name(), () ->
+                Ios.input(a, "Your name", null, s.name(), "Name", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS, true, v -> {
+                    s.setName(v);
+                    refresh();
+                }));
+        row(c, R.drawable.ic_person, GRAY, "Address me as", () -> ADDRESS[s.address()], () ->
+                Ios.sheet(a, "Used for Hindi grammar", ADDRESS, s.address(), i -> {
+                    s.setAddress(i);
+                    refresh();
+                }));
+        row(c, R.drawable.ic_translate, BLUE, "Language", () -> s.hindi() ? "Hindi" : "English", () ->
+                Ios.sheet(a, "Language", new String[]{"Hindi", "English"}, s.hindi() ? 0 : 1, i -> {
                     s.setHindi(i == 0);
                     s.setVoiceName("");
+                    refresh();
                 }));
-        toggle("Natural voice", () -> "Neural voice (Swara / Neerja). Needs internet, falls back to the phone voice offline.",
-                s::onlineVoice, s::setOnlineVoice);
-        row("Offline voice", () -> s.voiceName().isEmpty() ? "Phone default" : s.voiceName(), this::pickDeviceVoice);
-        row("Test voice", () -> "Hear how she sounds", () -> {
-            Toast.makeText(a, "Playing…", Toast.LENGTH_SHORT).show();
-            a.speaker().speak(Messages.testVoice(s, s.hindi()), s.onlineVoice(), s.hindi(), s.voiceName(), () -> { });
-        });
 
-        section("AI");
-        row("Groq API key", () -> s.aiKey().isEmpty() ? "Not set · using the free built-in AI" : "Set · using Groq",
-                () -> edit("Groq API key", s.aiKey(), InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, s::setAiKey));
-        row("Model", s::aiModel, () -> edit("Model", s.aiModel(), InputType.TYPE_TEXT_VARIATION_URI, s::setAiModel));
-        row("API endpoint", s::aiUrl, () -> edit("API endpoint", s.aiUrl(), InputType.TYPE_TEXT_VARIATION_URI, s::setAiUrl));
-        note("Optional. Get a free key at console.groq.com for faster, more reliable replies.");
+        c = section("Voice");
+        toggle(c, R.drawable.ic_sparkle, PURPLE, "Natural voice", s::onlineVoice, s::setOnlineVoice);
+        row(c, R.drawable.ic_volume, PURPLE, "Offline voice", () -> s.voiceName().isEmpty() ? "Default" : s.voiceName(), this::pickDeviceVoice);
+        row(c, R.drawable.ic_volume, PURPLE, "Play sample", () -> "", () ->
+                a.speaker().speak(Messages.testVoice(s, s.hindi()), s.onlineVoice(), s.hindi(), s.voiceName(), () -> { }));
+        footer("Natural voice uses a free neural voice (Swara for Hindi, Neerja for English) over the internet and falls back to the phone voice offline.");
 
-        section("Background reliability");
-        row("Notifications", () -> notificationsOk() ? "Allowed" : "Off · tap to allow", this::fixNotifications);
-        row("Microphone", () -> a.hasMic() ? "Allowed" : "Not allowed · tap to allow", () -> {
+        c = section("AI");
+        row(c, R.drawable.ic_key, GRAY, "Groq API key", () -> s.aiKey().isEmpty() ? "Free AI" : "Groq", () ->
+                Ios.input(a, "Groq API key", "Optional. Leave empty to use the free built-in AI.", s.aiKey(), "gsk_…",
+                        InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, true, v -> {
+                            s.setAiKey(v);
+                            refresh();
+                        }));
+        row(c, R.drawable.ic_sparkle, TEAL, "Model", s::aiModel, () ->
+                Ios.input(a, "Model", null, s.aiModel(), "Model", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, true, v -> {
+                    s.setAiModel(v);
+                    refresh();
+                }));
+        row(c, R.drawable.ic_sparkle, TEAL, "API endpoint", s::aiUrl, () ->
+                Ios.input(a, "API endpoint", "Any OpenAI-compatible chat completions URL.", s.aiUrl(), "https://…",
+                        InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, true, v -> {
+                            s.setAiUrl(v);
+                            refresh();
+                        }));
+        footer("A free key from console.groq.com gives faster, more reliable replies.");
+
+        c = section("Background");
+        row(c, R.drawable.ic_bell, RED, "Notifications", () -> notificationsOk() ? "On" : "!Off", this::fixNotifications);
+        if (Build.VERSION.SDK_INT >= 34) {
+            row(c, R.drawable.ic_fullscreen, GREEN, "Full-screen calls", () -> fullScreenOk() ? "Allowed" : "!Not allowed", () -> {
+                try {
+                    a.startActivity(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                            Uri.parse("package:" + a.getPackageName())));
+                } catch (Exception e) {
+                    a.openAppDetails();
+                }
+            });
+        }
+        row(c, R.drawable.ic_mic, ORANGE, "Microphone", () -> a.hasMic() ? "Allowed" : "!Not allowed", () -> {
             if (a.hasMic()) a.openAppDetails();
             else a.requestRuntimePermissions();
         });
-        row("Battery usage", () -> a.ignoringBatteryOptimizations() ? "Unrestricted" : "Restricted · tap to fix", () -> {
+        row(c, R.drawable.ic_battery, GREEN, "Battery", () -> a.ignoringBatteryOptimizations() ? "Unrestricted" : "!Restricted", () -> {
             if (a.ignoringBatteryOptimizations()) a.openAppDetails();
             else a.askBatteryOptimization();
         });
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            row("Alarms & reminders", () -> exactAlarmsOk() ? "Allowed" : "Not allowed · tap to fix", () -> {
+            row(c, R.drawable.ic_alarm, ORANGE, "Alarms & reminders", () -> exactAlarmsOk() ? "Allowed" : "!Not allowed", () -> {
                 try {
                     a.startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
                             Uri.parse("package:" + a.getPackageName())));
@@ -115,26 +167,32 @@ class SettingsTab {
                 }
             });
         }
-        row("Autostart", () -> "Needed on Xiaomi, Redmi, Oppo, Realme, Vivo, OnePlus, Huawei", this::openAutostart);
-        note("Also lock the app in Recent apps (long-press its card, then Lock) so the phone does not close it.");
+        row(c, R.drawable.ic_power, GRAY, "Autostart", () -> "", this::openAutostart);
+        footer("On Xiaomi, Redmi, Oppo, Realme, Vivo and OnePlus phones turn on Autostart and lock the app in Recent apps so calls keep coming.");
 
-        section("About");
-        row("Clear conversation", () -> "Remove all messages", () -> new AlertDialog.Builder(a)
-                .setTitle("Clear conversation?")
-                .setMessage("Messages will be removed. Tasks and journal stay.")
-                .setPositiveButton("Clear", (d, w) -> s.clearMessages())
-                .setNegativeButton("Cancel", null)
-                .show());
-        row("Version", this::version, null);
+        c = section("About");
+        row(c, R.drawable.ic_delete, RED, "Clear conversation", () -> "", () ->
+                Ios.confirm(a, "Clear conversation?", "Messages will be removed. Tasks and journal stay.", "Clear", s::clearMessages));
+        Row v = row(c, R.drawable.ic_info, GRAY, "Version", this::version, null);
+        v.value.setVisibility(View.VISIBLE);
     }
 
     void refresh() {
         updating = true;
+        profileName.setText(s.herName());
+        profileAvatar.setText(s.herName().substring(0, 1).toUpperCase(java.util.Locale.ROOT));
+        long next = s.nextAt();
+        profileSub.setText(s.serviceOn() && next > 0
+                ? (s.callStyle() ? "Next call " : "Next check-in ") + Store.timeLabel(next)
+                : "Automatic calls are off");
         for (Row r : rows) {
-            if (r.sub != null) {
-                String t = r.sub.get();
-                r.subtitle.setText(t);
-                r.subtitle.setVisibility(t == null || t.isEmpty() ? View.GONE : View.VISIBLE);
+            if (r.text != null) {
+                String t = r.text.get();
+                boolean problem = t != null && t.startsWith("!");
+                if (problem) t = t.substring(1);
+                r.value.setText(t);
+                r.value.setTextColor(a.getColor(problem ? R.color.red : R.color.muted));
+                r.value.setVisibility(t == null || t.isEmpty() ? View.GONE : View.VISIBLE);
             }
             if (r.sw != null) r.sw.setChecked(r.checked.get());
         }
@@ -143,27 +201,67 @@ class SettingsTab {
 
     // ---------- building blocks ----------
 
-    private void section(String title) {
-        TextView label = new TextView(a);
-        label.setText(title);
-        label.setTextAppearance(R.style.SectionLabel);
-        label.setPadding(a.dp(4), a.dp(20), 0, a.dp(8));
-        container.addView(label);
-        card = new LinearLayout(a);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundResource(R.drawable.bg_card);
-        card.setShowDividers(LinearLayout.SHOW_DIVIDER_MIDDLE);
-        card.setDividerDrawable(a.getDrawable(R.drawable.divider));
-        card.setClipToOutline(true);
+    private void profileCard() {
+        LinearLayout card = Ios.groupCard(a, 16);
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) card.getLayoutParams();
+        lp.topMargin = a.dp(14);
+        LinearLayout row = new LinearLayout(a);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(a.dp(16), a.dp(12), a.dp(12), a.dp(12));
+        row.setBackgroundResource(selectable());
+        profileAvatar = new TextView(a);
+        profileAvatar.setBackgroundResource(R.drawable.bg_avatar);
+        profileAvatar.setGravity(Gravity.CENTER);
+        profileAvatar.setTextColor(0xFFFFFFFF);
+        profileAvatar.setTextSize(26);
+        row.addView(profileAvatar, new LinearLayout.LayoutParams(a.dp(60), a.dp(60)));
+        LinearLayout texts = new LinearLayout(a);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setPadding(a.dp(14), 0, 0, 0);
+        profileName = new TextView(a);
+        profileName.setTextSize(22);
+        profileName.setTextColor(a.getColor(R.color.text));
+        profileSub = new TextView(a);
+        profileSub.setTextSize(13);
+        profileSub.setTextColor(a.getColor(R.color.muted));
+        texts.addView(profileName);
+        texts.addView(profileSub);
+        row.addView(texts, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        ImageView chev = new ImageView(a);
+        chev.setImageResource(R.drawable.ic_chevron);
+        chev.setImageTintList(android.content.res.ColorStateList.valueOf(a.getColor(R.color.tertiary)));
+        row.addView(chev, new LinearLayout.LayoutParams(a.dp(20), a.dp(20)));
+        row.setOnClickListener(v -> Ios.input(a, "Her name", null, s.herName(), "Name",
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS, true, n -> {
+                    if (!n.trim().isEmpty()) s.setHerName(n);
+                    refresh();
+                }));
+        card.addView(row);
         container.addView(card);
     }
 
-    private Row row(String title, Supplier<String> sub, Runnable onClick) {
-        View v = LayoutInflater.from(a).inflate(R.layout.item_setting_row, card, false);
+    private LinearLayout section(String title) {
+        container.addView(Ios.sectionHeader(a, title));
+        LinearLayout card = Ios.groupCard(a, 59);
+        container.addView(card);
+        return card;
+    }
+
+    private void footer(String text) {
+        container.addView(Ios.sectionFooter(a, text));
+    }
+
+    private Row row(LinearLayout card, int icon, int color, String title, Supplier<String> value, Runnable onClick) {
+        View v = LayoutInflater.from(a).inflate(R.layout.item_row, card, false);
+        GradientDrawable sq = new GradientDrawable();
+        sq.setColor(color);
+        sq.setCornerRadius(a.dp(7));
+        v.findViewById(R.id.iconBox).setBackground(sq);
+        ((ImageView) v.findViewById(R.id.icon)).setImageResource(icon);
         ((TextView) v.findViewById(R.id.title)).setText(title);
         Row r = new Row();
-        r.subtitle = v.findViewById(R.id.subtitle);
-        r.sub = sub;
+        r.value = v.findViewById(R.id.value);
+        r.text = value;
         if (onClick != null) {
             v.setOnClickListener(x -> onClick.run());
         } else {
@@ -175,77 +273,44 @@ class SettingsTab {
         return r;
     }
 
-    private void toggle(String title, Supplier<String> sub, Supplier<Boolean> get, Consumer<Boolean> set) {
-        Row r = row(title, sub, null);
+    private void toggle(LinearLayout card, int icon, int color, String title, Supplier<Boolean> get, Consumer<Boolean> set) {
+        Row r = row(card, icon, color, title, null, null);
         View v = card.getChildAt(card.getChildCount() - 1);
+        r.value.setVisibility(View.GONE);
         r.sw = v.findViewById(R.id.rowSwitch);
         r.sw.setVisibility(View.VISIBLE);
         r.checked = get;
         r.sw.setOnCheckedChangeListener((b, on) -> {
             if (!updating) set.accept(on);
         });
-        v.setOnClickListener(x -> r.sw.toggle());
-        v.setBackgroundResource(resolveSelectable());
     }
 
-    private int resolveSelectable() {
+    private int selectable() {
         android.util.TypedValue tv = new android.util.TypedValue();
         a.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, tv, true);
         return tv.resourceId;
     }
 
-    private void note(String text) {
-        TextView t = new TextView(a);
-        t.setText(text);
-        t.setTextColor(a.getColor(R.color.muted));
-        t.setTextSize(12);
-        t.setPadding(a.dp(4), a.dp(8), a.dp(4), 0);
-        container.addView(t);
-    }
+    // ---------- pickers ----------
 
-    // ---------- dialogs ----------
-
-    private void edit(String title, String current, int extraType, Consumer<String> save) {
-        EditText input = new EditText(a);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | extraType);
-        input.setText(current);
-        input.setSelection(input.getText().length());
-        FrameLayout box = new FrameLayout(a);
-        box.setPadding(a.dp(20), a.dp(8), a.dp(20), 0);
-        box.addView(input);
-        new AlertDialog.Builder(a)
-                .setTitle(title)
-                .setView(box)
-                .setPositiveButton("Save", (d, w) -> {
-                    save.accept(input.getText().toString());
-                    refresh();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
-
-    private void choose(String title, String[] items, int checked, IntConsumer pick) {
-        new AlertDialog.Builder(a)
-                .setTitle(title)
-                .setSingleChoiceItems(items, checked, (d, which) -> {
-                    pick.accept(which);
-                    d.dismiss();
-                    refresh();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+    private static String intervalLabel(int m) {
+        if (m == 1) return "Every minute";
+        if (m < 60) return "Every " + m + " min";
+        if (m == 60) return "Every hour";
+        return "Every " + (m % 60 == 0 ? (m / 60) + " hours" : m + " min");
     }
 
     private void pickInterval() {
         String[] labels = new String[INTERVALS.length];
         int checked = -1;
         for (int i = 0; i < INTERVALS.length; i++) {
-            labels[i] = "Every " + INTERVALS[i] + " minutes";
+            labels[i] = intervalLabel(INTERVALS[i]) + (INTERVALS[i] <= 2 ? " (testing)" : "");
             if (INTERVALS[i] == s.intervalMin()) checked = i;
         }
-        choose("Check-in frequency", labels, checked, i -> {
+        Ios.sheet(a, "How often should she call?", labels, checked, i -> {
             s.setIntervalMin(INTERVALS[i]);
             a.reschedule();
+            refresh();
         });
     }
 
@@ -254,23 +319,24 @@ class SettingsTab {
         String[] labels = new String[to - from + 1];
         for (int h = from; h <= to; h++) labels[h - from] = Store.hourLabel(h);
         int current = (start ? s.startHour() : s.endHour()) - from;
-        choose(start ? "Active from" : "Active until", labels, current, i -> {
+        Ios.sheet(a, start ? "Calls start at" : "Calls stop at", labels, current, i -> {
             if (start) s.setStartHour(i + from);
             else s.setEndHour(i + from);
             a.reschedule();
+            refresh();
         });
     }
 
     private void pickDeviceVoice() {
         if (tts == null) {
             Toast.makeText(a, "Loading voices…", Toast.LENGTH_SHORT).show();
-            tts = new TextToSpeech(a, st -> a.runOnUiThread(this::showVoiceDialog));
+            tts = new TextToSpeech(a, st -> a.runOnUiThread(this::showVoiceSheet));
         } else {
-            showVoiceDialog();
+            showVoiceSheet();
         }
     }
 
-    private void showVoiceDialog() {
+    private void showVoiceSheet() {
         List<Voice> voices = new ArrayList<>();
         try {
             String lang = s.hindi() ? "hi" : "en";
@@ -283,15 +349,16 @@ class SettingsTab {
         }
         Collections.sort(voices, (x, y) -> x.getName().compareTo(y.getName()));
         String[] labels = new String[voices.size() + 1];
-        labels[0] = "Phone default";
+        labels[0] = "Default";
         int checked = 0;
         for (int i = 0; i < voices.size(); i++) {
             labels[i + 1] = voices.get(i).getName();
             if (voices.get(i).getName().equals(s.voiceName())) checked = i + 1;
         }
-        choose("Offline voice", labels, checked, i -> {
+        Ios.sheet(a, "Offline voice", labels, checked, i -> {
             String name = i == 0 ? "" : voices.get(i - 1).getName();
             s.setVoiceName(name);
+            refresh();
             a.speaker().speak(Messages.testVoice(s, s.hindi()), false, s.hindi(), name, () -> { });
         });
     }
@@ -301,6 +368,11 @@ class SettingsTab {
     private boolean notificationsOk() {
         NotificationManager nm = a.getSystemService(NotificationManager.class);
         return a.hasNotificationPermission() && nm != null && nm.areNotificationsEnabled();
+    }
+
+    private boolean fullScreenOk() {
+        NotificationManager nm = a.getSystemService(NotificationManager.class);
+        return Build.VERSION.SDK_INT < 34 || (nm != null && nm.canUseFullScreenIntent());
     }
 
     private void fixNotifications() {

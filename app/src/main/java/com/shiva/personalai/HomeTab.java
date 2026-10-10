@@ -23,7 +23,7 @@ class HomeTab {
 
     private final MainActivity a;
     private final Store s;
-    private final TextView avatar, herName, status, bannerText;
+    private final TextView avatar, herName, status, bannerTitle, bannerText, bannerButton;
     private final View banner;
     private final LinearLayout chat;
     private final ScrollView scroll;
@@ -38,14 +38,19 @@ class HomeTab {
         herName = root.findViewById(R.id.textHerName);
         status = root.findViewById(R.id.textStatus);
         banner = root.findViewById(R.id.bannerAuto);
+        bannerTitle = root.findViewById(R.id.bannerTitle);
         bannerText = root.findViewById(R.id.bannerText);
+        bannerButton = root.findViewById(R.id.bannerButton);
         chat = root.findViewById(R.id.chatList);
         scroll = root.findViewById(R.id.scrollChat);
         edit = root.findViewById(R.id.editMessage);
         btnMic = root.findViewById(R.id.btnMic);
 
         root.findViewById(R.id.btnCallNow).setOnClickListener(v -> a.callHer());
-        root.findViewById(R.id.bannerButton).setOnClickListener(v -> a.setAuto(true));
+        bannerButton.setOnClickListener(v -> {
+            if (!s.serviceOn()) a.setAuto(true);
+            else a.setupAiKey();
+        });
         root.findViewById(R.id.headerCenter).setOnClickListener(v -> a.openTab(3));
         root.findViewById(R.id.headerCenter).setOnLongClickListener(v -> {
             Ios.confirm(a, "Clear conversation?", "Messages will be removed. Tasks and journal stay.", "Clear", s::clearMessages);
@@ -94,6 +99,7 @@ class HomeTab {
                 refreshStatus();
                 break;
             case "herName":
+            case "aiKey":
                 refresh();
                 break;
             default:
@@ -115,9 +121,18 @@ class HomeTab {
         }
         status.setText(text);
         status.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
-        banner.setVisibility(on ? View.GONE : View.VISIBLE);
-        bannerText.setText(s.herName() + (s.callStyle() ? " will call you every " : " will check on you every ")
-                + s.intervalMin() + (s.intervalMin() == 1 ? " minute" : " minutes") + " to see how you are doing.");
+        boolean slowAi = AiClient.usingFreeAi(s);
+        banner.setVisibility(!on || slowAi ? View.VISIBLE : View.GONE);
+        if (!on) {
+            bannerTitle.setText("Let her call you");
+            bannerText.setText(s.herName() + (s.callStyle() ? " will call you every " : " will check on you every ")
+                    + s.intervalMin() + (s.intervalMin() == 1 ? " minute" : " minutes") + " to see how you are doing.");
+            bannerButton.setText("Turn On");
+        } else {
+            bannerTitle.setText("Make her reply instantly");
+            bannerText.setText("The free AI takes 5 to 15 seconds. Add a free Groq key for instant, smarter replies.");
+            bannerButton.setText("Set Up");
+        }
         boolean listening = "listening".equals(state);
         btnMic.setImageTintList(android.content.res.ColorStateList.valueOf(a.getColor(
                 listening ? R.color.red : edit.getText().length() > 0 ? android.R.color.white : R.color.muted)));

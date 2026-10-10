@@ -118,6 +118,14 @@ public class Messages {
                 : "Sorry, I cannot think right now. Check the internet and talk to me again.";
     }
 
+    private static final String[] FILLER_HI = {"हम्म…", "अच्छा…", "एक सेकंड…", "हाँ…"};
+    private static final String[] FILLER_EN = {"Hmm…", "Okay…", "One sec…", "Right…"};
+
+    /** Short sound she makes while thinking, so a slow AI does not feel like dead air. */
+    public static String filler(Store s) {
+        return pick(s.hindi() ? FILLER_HI : FILLER_EN);
+    }
+
     public static String callOpening(int type, Store s) {
         return (s.hindi() ? "हेलो! " : "Hello! ") + checkIn(type, s);
     }

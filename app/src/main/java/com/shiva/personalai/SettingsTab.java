@@ -32,6 +32,14 @@ class SettingsTab {
     private static final int[] INTERVALS = {1, 2, 5, 10, 15, 20, 30, 45, 60, 90, 120};
     private static final String[] PERSONALITIES = {"Girlfriend", "Best friend", "Career coach"};
     private static final String[] ADDRESS = {"Aap (neutral)", "Male", "Female"};
+    private static final String[] SPEEDS = {"Normal", "A bit faster", "Fast", "Very fast"};
+    private static final int[] SPEED_PCT = {0, 10, 20, 30};
+
+    private static int speedIndex(int pct) {
+        int best = 0;
+        for (int i = 0; i < SPEED_PCT.length; i++) if (Math.abs(SPEED_PCT[i] - pct) < Math.abs(SPEED_PCT[best] - pct)) best = i;
+        return best;
+    }
 
     // iOS system colors for the icon squares
     private static final int BLUE = 0xFF007AFF, GREEN = 0xFF34C759, ORANGE = 0xFFFF9500, RED = 0xFFFF3B30,
@@ -112,43 +120,50 @@ class SettingsTab {
 
         c = section("Voice");
         toggle(c, R.drawable.ic_sparkle, PURPLE, "Natural voice", s::onlineVoice, s::setOnlineVoice);
+        row(c, R.drawable.ic_clock, PURPLE, "Speaking speed", () -> SPEEDS[speedIndex(s.speechRate())], () ->
+                Ios.sheet(a, "How fast should she talk?", SPEEDS, speedIndex(s.speechRate()), i -> {
+                    s.setSpeechRate(SPEED_PCT[i]);
+                    refresh();
+                    a.speaker().speak(Messages.testVoice(s, s.hindi()), s.onlineVoice(), s.hindi(), s.voiceName(), () -> { });
+                }));
         row(c, R.drawable.ic_volume, PURPLE, "Offline voice", () -> s.voiceName().isEmpty() ? "Default" : s.voiceName(), this::pickDeviceVoice);
         row(c, R.drawable.ic_volume, PURPLE, "Play sample", () -> "", () ->
                 a.speaker().speak(Messages.testVoice(s, s.hindi()), s.onlineVoice(), s.hindi(), s.voiceName(), () -> { }));
         footer("Natural voice uses a free neural voice (Swara for Hindi, Neerja for English) over the internet and falls back to the phone voice offline.");
 
         c = section("AI");
-        row(c, R.drawable.ic_key, GRAY, "Groq API key", () -> s.aiKey().isEmpty() ? "Free AI" : "Groq", () ->
-                Ios.input(a, "Groq API key", "Optional. Leave empty to use the free built-in AI.", s.aiKey(), "gsk_…",
-                        InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, true, v -> {
-                            s.setAiKey(v);
+        row(c, R.drawable.ic_sparkle, TEAL, "AI", () -> {
+            String name = AiClient.providerName(s);
+            return AiClient.usingFreeAi(s) ? "!" + name + " (slow)" : name;
+        }, a::setupAiKey);
+        row(c, R.drawable.ic_clock, TEAL, "Test AI speed", () -> s.lastAi(), a::testAi);
+        row(c, R.drawable.ic_key, GRAY, "API key", () -> s.aiKey().isEmpty() ? "None"
+                : s.aiKey().substring(0, Math.min(6, s.aiKey().length())) + "…", () ->
+                Ios.input(a, "API key", "Groq (gsk_…) or Gemini (AIza…). Leave empty for the free AI.", s.aiKey(), "gsk_…",
+                        InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, true, val -> {
+                            s.setAiKey(val);
                             refresh();
                         }));
-        row(c, R.drawable.ic_sparkle, TEAL, "Model", s::aiModel, () ->
-                Ios.input(a, "Model", null, s.aiModel(), "Model", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, true, v -> {
-                    s.setAiModel(v);
-                    refresh();
-                }));
-        row(c, R.drawable.ic_sparkle, TEAL, "API endpoint", s::aiUrl, () ->
-                Ios.input(a, "API endpoint", "Any OpenAI-compatible chat completions URL.", s.aiUrl(), "https://…",
-                        InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, true, v -> {
-                            s.setAiUrl(v);
+        row(c, R.drawable.ic_sparkle, GRAY, "Model", s::aiModel, () ->
+                Ios.input(a, "Model", "Leave as is unless you know the exact model name.", s.aiModel(), "Model",
+                        InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, true, val -> {
+                            s.setAiModel(val);
                             refresh();
                         }));
-        footer("A free key from console.groq.com gives faster, more reliable replies.");
+        footer("The free AI needs no key but takes 5 to 15 seconds per reply. A free Groq key makes her answer in under a second "
+                + "and much smarter. Groq or Gemini is picked automatically from the key.");
 
         c = section("Background");
-        row(c, R.drawable.ic_bell, RED, "Notifications", () -> notificationsOk() ? "On" : "!Off", this::fixNotifications);
+        row(c, R.drawable.ic_fullscreen, GREEN, "Display over other apps", () -> a.canDrawOverlays() ? "Allowed" : "!Not allowed",
+                a::openOverlaySettings);
         if (Build.VERSION.SDK_INT >= 34) {
-            row(c, R.drawable.ic_fullscreen, GREEN, "Full-screen calls", () -> fullScreenOk() ? "Allowed" : "!Not allowed", () -> {
-                try {
-                    a.startActivity(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
-                            Uri.parse("package:" + a.getPackageName())));
-                } catch (Exception e) {
-                    a.openAppDetails();
-                }
-            });
+            row(c, R.drawable.ic_fullscreen, GREEN, "Full-screen calls", () -> fullScreenOk() ? "Allowed" : "!Not allowed",
+                    a::openFullScreenSettings);
         }
+        if (MainActivity.isMiui()) {
+            row(c, R.drawable.ic_fullscreen, GREEN, "Lock screen & pop-ups", () -> "Xiaomi", a::openMiuiPermissions);
+        }
+        row(c, R.drawable.ic_bell, RED, "Notifications", () -> notificationsOk() ? "On" : "!Off", this::fixNotifications);
         row(c, R.drawable.ic_mic, ORANGE, "Microphone", () -> a.hasMic() ? "Allowed" : "!Not allowed", () -> {
             if (a.hasMic()) a.openAppDetails();
             else a.requestRuntimePermissions();
@@ -168,7 +183,8 @@ class SettingsTab {
             });
         }
         row(c, R.drawable.ic_power, GRAY, "Autostart", () -> "", this::openAutostart);
-        footer("On Xiaomi, Redmi, Oppo, Realme, Vivo and OnePlus phones turn on Autostart and lock the app in Recent apps so calls keep coming.");
+        footer("\"Display over other apps\" lets her call turn on your screen. On Xiaomi, Redmi, Oppo, Realme, Vivo and OnePlus "
+                + "also turn on Autostart and lock the app in Recent apps so calls keep coming.");
 
         c = section("About");
         row(c, R.drawable.ic_delete, RED, "Clear conversation", () -> "", () ->

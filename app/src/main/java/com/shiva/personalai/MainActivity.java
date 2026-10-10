@@ -178,7 +178,9 @@ public class MainActivity extends Activity {
     /** She phones the user right now (test the incoming call). */
     void testIncomingCall() {
         requestRuntimePermissions();
-        CheckInService.send(this, CheckInService.ACTION_CHECK_IN);
+        if (!ensureCallSetup()) return;
+        Toast.makeText(this, "Lock your phone, she will call in 5 seconds", Toast.LENGTH_LONG).show();
+        CheckInService.armAlarm(this, System.currentTimeMillis() + 5000, CheckInService.ACTION_CHECK_IN, 7);
     }
 
     void openCallScreen(String action) {
@@ -187,9 +189,79 @@ public class MainActivity extends Activity {
         startActivity(i);
     }
 
+    // ---------- "ring like a real call" setup ----------
+
+    boolean canDrawOverlays() {
+        return Settings.canDrawOverlays(this);
+    }
+
+    boolean fullScreenAllowed() {
+        if (Build.VERSION.SDK_INT < 34) return true;
+        android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
+        return nm != null && nm.canUseFullScreenIntent();
+    }
+
+    static boolean isMiui() {
+        String m = (Build.MANUFACTURER + " " + Build.BRAND).toLowerCase(java.util.Locale.ROOT);
+        return m.contains("xiaomi") || m.contains("redmi") || m.contains("poco");
+    }
+
+    void openOverlaySettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            openAppDetails();
+        }
+    }
+
+    void openFullScreenSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            openAppDetails();
+        }
+    }
+
+    /** Xiaomi hides "Show on lock screen" and "Open new windows while running in background" here. */
+    void openMiuiPermissions() {
+        try {
+            startActivity(new Intent("miui.intent.action.APP_PERM_EDITOR")
+                    .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                    .putExtra("extra_pkgname", getPackageName()));
+        } catch (Exception e) {
+            openAppDetails();
+        }
+    }
+
+    /** Explains and opens the one setting that is still missing for the screen to light up on a call. */
+    boolean ensureCallSetup() {
+        if (!canDrawOverlays()) {
+            Ios.alert(this, "Let her calls wake your screen",
+                    "Allow \"Display over other apps\" for " + getString(R.string.app_name)
+                            + ". Without it Android only plays the ringtone when the screen is off.",
+                    null, "Later", "Open Settings", false, this::openOverlaySettings);
+            return false;
+        }
+        if (!fullScreenAllowed()) {
+            Ios.alert(this, "Allow full-screen calls",
+                    "Turn on full-screen notifications so her call shows on the lock screen.",
+                    null, "Later", "Open Settings", false, this::openFullScreenSettings);
+            return false;
+        }
+        if (isMiui() && !store.prefs().getBoolean("miuiShown", false)) {
+            store.prefs().edit().putBoolean("miuiShown", true).apply();
+            Ios.alert(this, "One more step on Xiaomi",
+                    "Turn on \"Show on Lock screen\" and \"Open new windows while running in the background\".",
+                    null, "Later", "Open Settings", false, this::openMiuiPermissions);
+            return false;
+        }
+        return true;
+    }
+
     void setAuto(boolean on) {
         if (on) {
             requestRuntimePermissions();
+            ensureCallSetup();
             store.setServiceOn(true);
             CheckInService.send(this, new Intent(this, CheckInService.class)
                     .setAction(CheckInService.ACTION_START).putExtra(CheckInService.EXTRA_GREET, true));
@@ -258,6 +330,86 @@ public class MainActivity extends Activity {
         }
     }
 
+    // ---------- AI key ----------
+
+    void openUrl(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** One place to make her fast: get or paste a free Groq / Gemini key. */
+    void setupAiKey() {
+        Ios.sheet(this, "Free key = instant, smarter replies", new String[]{
+                "Get a free Groq key (recommended)", "Paste my key", "Get a free Google Gemini key", "Use the slow free AI"}, -1, i -> {
+            switch (i) {
+                case 0:
+                    Toast.makeText(this, "Sign in, tap Create API Key, copy it, then come back and choose Paste my key", Toast.LENGTH_LONG).show();
+                    openUrl("https://console.groq.com/keys");
+                    break;
+                case 1:
+                    pasteKey();
+                    break;
+                case 2:
+                    Toast.makeText(this, "Create an API key, copy it, then come back and choose Paste my key", Toast.LENGTH_LONG).show();
+                    openUrl("https://aistudio.google.com/apikey");
+                    break;
+                default:
+                    store.setAiKey("");
+                    settings.refresh();
+                    home.refresh();
+            }
+        });
+    }
+
+    private void pasteKey() {
+        String clip = "";
+        try {
+            android.content.ClipboardManager cm = getSystemService(android.content.ClipboardManager.class);
+            if (cm != null && cm.hasPrimaryClip() && cm.getPrimaryClip().getItemCount() > 0) {
+                CharSequence c = cm.getPrimaryClip().getItemAt(0).coerceToText(this);
+                String t = c == null ? "" : c.toString().trim();
+                if (t.startsWith("gsk_") || t.startsWith("AIza")) clip = t;
+            }
+        } catch (Exception ignored) {
+        }
+        Ios.input(this, "Paste your API key", "Groq keys start with gsk_, Gemini keys with AIza.", clip, "gsk_…",
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, true, key -> {
+                    store.setAiKey(key.trim());
+                    settings.refresh();
+                    home.refresh();
+                    testAi();
+                });
+    }
+
+    /** Sends one real message and shows which AI answered and how fast. */
+    void testAi() {
+        Toast.makeText(this, "Asking " + AiClient.providerName(store) + "…", Toast.LENGTH_SHORT).show();
+        List<Store.Msg> history = new ArrayList<>();
+        history.add(new Store.Msg("user", store.hindi() ? "हाय! एक छोटी सी लाइन में बताओ, आज मुझे क्या करना चाहिए?"
+                : "Hi! In one short line, what should I do today?", System.currentTimeMillis()));
+        new Thread(() -> {
+            String title, body;
+            try {
+                AiClient.Result r = AiClient.chat(store, Messages.TYPE_TALK, store.pendingTexts(), history, false);
+                title = r.provider + " answered in " + String.format(java.util.Locale.US, "%.1f s", r.millis / 1000f);
+                body = r.reply;
+                store.setLastAi(r.provider + " · " + String.format(java.util.Locale.US, "%.1f s", r.millis / 1000f));
+            } catch (Exception e) {
+                title = "AI did not answer";
+                body = e.getMessage() == null ? e.toString() : e.getMessage();
+                store.setLastAi("Failed");
+            }
+            final String t = title, b = body;
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                settings.refresh();
+                Ios.alert(this, t, b, null, null, "OK", false, null);
+            });
+        }).start();
+    }
+
     // ---------- onboarding ----------
 
     private void showOnboarding() {
@@ -268,6 +420,10 @@ public class MainActivity extends Activity {
                     requestRuntimePermissions();
                     home.refresh();
                     settings.refresh();
+                    Ios.alert(this, "Make her instant",
+                            "Without a key she uses a free AI that takes 5 to 15 seconds per reply. "
+                                    + "A free Groq key (1 minute, no card) makes her answer in under a second and much smarter.",
+                            null, "Later", "Set Up", false, this::setupAiKey);
                 });
     }
 

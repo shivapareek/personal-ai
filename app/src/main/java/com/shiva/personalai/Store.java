@@ -147,6 +147,13 @@ public class Store {
     public int address() { return p.getInt("address", 0); }
     public void setAddress(int v) { p.edit().putInt("address", v).apply(); }
 
+    public String lastAi() { return p.getString("lastAi", ""); }
+    public void setLastAi(String v) { p.edit().putString("lastAi", v).apply(); }
+
+    /** Speaking speed change in percent (0 = normal). */
+    public int speechRate() { return p.getInt("speechRate", 10); }
+    public void setSpeechRate(int v) { p.edit().putInt("speechRate", v).apply(); }
+
     public int peekType() { return p.getInt("type", 0) % 3; }
     public void advanceType() { p.edit().putInt("type", (peekType() + 1) % 3).apply(); }
 

@@ -3,12 +3,15 @@ package com.shiva.personalai;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -17,82 +20,317 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 /**
- * The assistant's "brain": any OpenAI-compatible chat endpoint.
- * Without a key it uses the free, keyless Pollinations endpoint; with a Groq key it uses Groq.
- * Call off the main thread.
+ * Her brain: any OpenAI-compatible chat endpoint, streamed. Sentences are handed to the speaker as soon
+ * as they are complete, so she starts talking while the rest is still being written.
+ *
+ * Providers are picked from the key: no key = free keyless endpoint, "gsk_" = Groq, "AIza" = Google
+ * Gemini, anything else = the custom URL / model from Settings. If the keyed provider fails, the free
+ * endpoint is tried before giving up. Call off the main thread.
  */
 public class AiClient {
+
+    public interface SentenceListener {
+        void onSentence(String sentence);
+    }
 
     public static class Result {
         public String reply = "";
         public List<Integer> done = new ArrayList<>();
         public boolean askMore;
         public boolean endCall;
+        public String provider = "";
+        public long millis;
     }
 
     static final String FREE_URL = "https://text.pollinations.ai/openai";
     static final String FREE_MODEL = "openai";
+    static final String GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+    static final String[] GROQ_MODELS = {"llama-3.3-70b-versatile", "llama-3.1-8b-instant"};
+    static final String GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    static final String[] GEMINI_MODELS = {"gemini-2.5-flash-lite", "gemini-2.0-flash"};
+
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
             .build();
+    private static final Pattern TAG = Pattern.compile("\\[\\[\\s*([^\\]]*?)\\s*\\]\\]");
 
-    /**
-     * @param mode    Messages.TYPE_CARE / TYPE_CAREER / TYPE_TODO / TYPE_TALK
-     * @param opening true when the assistant should produce the opening message of a check-in
-     */
-    public static Result chat(Store s, int mode, List<String> pending, List<Store.Msg> history, boolean opening) throws Exception {
-        return chat(s, mode, pending, history, opening, false);
+    private static class Endpoint {
+        final String name, url, key;
+        final String[] models;
+
+        Endpoint(String name, String url, String key, String... models) {
+            this.name = name;
+            this.url = url;
+            this.key = key;
+            this.models = models;
+        }
     }
 
-    /** @param call true when this is a live phone call (short turns, may end the call). */
+    static String providerName(Store s) {
+        return endpoint(s).name;
+    }
+
+    static boolean usingFreeAi(Store s) {
+        return s.aiKey().isEmpty();
+    }
+
+    private static Endpoint endpoint(Store s) {
+        String key = s.aiKey();
+        boolean customModel = !Store.DEFAULT_AI_MODEL.equals(s.aiModel());
+        if (key.isEmpty()) return new Endpoint("Free AI", FREE_URL, "", FREE_MODEL);
+        if (key.startsWith("gsk_")) {
+            return customModel ? new Endpoint("Groq", GROQ_URL, key, s.aiModel(), GROQ_MODELS[0])
+                    : new Endpoint("Groq", GROQ_URL, key, GROQ_MODELS);
+        }
+        if (key.startsWith("AIza")) {
+            return customModel ? new Endpoint("Gemini", GEMINI_URL, key, s.aiModel(), GEMINI_MODELS[0])
+                    : new Endpoint("Gemini", GEMINI_URL, key, GEMINI_MODELS);
+        }
+        return new Endpoint("Custom", s.aiUrl(), key, s.aiModel());
+    }
+
+    /** Non-streaming convenience (used while the phone rings). */
+    public static Result chat(Store s, int mode, List<String> pending, List<Store.Msg> history, boolean opening) throws Exception {
+        return stream(s, mode, pending, history, opening, false, null);
+    }
+
     public static Result chat(Store s, int mode, List<String> pending, List<Store.Msg> history, boolean opening, boolean call) throws Exception {
+        return stream(s, mode, pending, history, opening, call, null);
+    }
+
+    public static Result stream(Store s, int mode, List<String> pending, List<Store.Msg> history,
+                                boolean opening, boolean call, SentenceListener listener) throws Exception {
+        JSONArray messages = buildMessages(s, mode, pending, history, opening, call);
+        Endpoint primary = endpoint(s);
+        Exception last = null;
+        List<Endpoint> chain = new ArrayList<>();
+        chain.add(primary);
+        if (!primary.key.isEmpty()) chain.add(new Endpoint("Free AI", FREE_URL, "", FREE_MODEL));
+        for (Endpoint e : chain) {
+            for (String model : e.models) {
+                Emitter em = new Emitter(listener);
+                long t0 = System.currentTimeMillis();
+                try {
+                    String text = run(e, model, messages, em);
+                    Result r = finish(text, pending.size(), em);
+                    r.provider = e.name;
+                    r.millis = System.currentTimeMillis() - t0;
+                    if (!r.reply.isEmpty()) return r;
+                    last = new Exception(e.name + ": empty reply");
+                } catch (Exception ex) {
+                    last = ex;
+                    if (em.emitted > 0) {
+                        // the stream broke after she already started talking: keep what she said
+                        Result r = finish(em.full.toString(), pending.size(), em);
+                        r.provider = e.name;
+                        return r;
+                    }
+                }
+            }
+        }
+        throw last != null ? last : new Exception("AI unavailable");
+    }
+
+    // ---------- request ----------
+
+    private static String run(Endpoint e, String model, JSONArray messages, Emitter em) throws Exception {
+        boolean free = e.key.isEmpty();
+        JSONObject body = new JSONObject()
+                .put("model", model)
+                .put("messages", messages)
+                .put("temperature", 0.85)
+                // the keyless endpoint rejects max_tokens and is faster without streaming
+                .put("stream", !free);
+        if (!free) body.put("max_tokens", 260);
+        else body.put("seed", (int) (System.nanoTime() & 0x7fffffff));
+        Request.Builder rb = new Request.Builder().url(e.url).post(RequestBody.create(body.toString(), JSON));
+        if (!e.key.isEmpty()) rb.header("Authorization", "Bearer " + e.key);
+        try (Response resp = CLIENT.newCall(rb.build()).execute()) {
+            if (resp.body() == null) throw new Exception(e.name + ": no response");
+            if (!resp.isSuccessful()) {
+                String err = resp.body().string();
+                throw new Exception(e.name + " HTTP " + resp.code() + ": " + err.substring(0, Math.min(160, err.length())));
+            }
+            String type = resp.header("Content-Type", "");
+            if (type != null && type.contains("event-stream")) {
+                BufferedReader reader = new BufferedReader(resp.body().charStream());
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.startsWith("data:")) continue;
+                    String data = line.substring(5).trim();
+                    if (data.equals("[DONE]")) break;
+                    if (data.isEmpty()) continue;
+                    try {
+                        JSONObject chunk = new JSONObject(data);
+                        JSONArray choices = chunk.optJSONArray("choices");
+                        if (choices == null || choices.length() == 0) continue;
+                        JSONObject delta = choices.getJSONObject(0).optJSONObject("delta");
+                        if (delta == null) continue;
+                        String piece = delta.optString("content", "");
+                        if (!piece.isEmpty() && !"null".equals(piece)) em.append(piece);
+                    } catch (Exception ignored) {
+                    }
+                }
+                return em.full.toString();
+            }
+            String text = resp.body().string();
+            String content = new JSONObject(text).getJSONArray("choices").getJSONObject(0)
+                    .getJSONObject("message").optString("content", "");
+            em.append(content);
+            return content;
+        }
+    }
+
+    // ---------- streaming sentence emitter ----------
+
+    /** Collects streamed text and hands out complete spoken sentences (never the trailing [[tags]]). */
+    static class Emitter {
+        final StringBuilder full = new StringBuilder();
+        final SentenceListener listener;
+        int spokenUpTo;
+        int emitted;
+
+        Emitter(SentenceListener listener) {
+            this.listener = listener;
+        }
+
+        void append(String piece) {
+            full.append(piece);
+            if (listener == null || looksLikeJson()) return;
+            String visible = visible();
+            int start = spokenUpTo;
+            for (int i = start; i < visible.length(); i++) {
+                char c = visible.charAt(i);
+                boolean end = c == '.' || c == '!' || c == '?' || c == '।' || c == '\n';
+                if (!end || i + 1 >= visible.length() || !Character.isWhitespace(visible.charAt(i + 1))) continue;
+                String sentence = clean(visible.substring(spokenUpTo, i + 1));
+                if (sentence.length() < 12) continue;
+                emit(sentence);
+                spokenUpTo = i + 1;
+            }
+        }
+
+        /** Speak whatever is left once the stream is over. */
+        void flush(String finalReply) {
+            if (listener == null) return;
+            if (emitted == 0) {
+                for (String s : Speaker.sentences(finalReply)) emit(s);
+                return;
+            }
+            String visible = visible();
+            if (spokenUpTo < visible.length()) {
+                String rest = clean(visible.substring(spokenUpTo));
+                if (!rest.isEmpty()) emit(rest);
+            }
+        }
+
+        private void emit(String s) {
+            emitted++;
+            listener.onSentence(s);
+        }
+
+        boolean looksLikeJson() {
+            String t = full.toString().trim();
+            return t.startsWith("{") || t.startsWith("```");
+        }
+
+        /** Text before any control tag; a lone trailing '[' is held back in case a tag is starting. */
+        private String visible() {
+            String t = full.toString();
+            int tag = t.indexOf('[');
+            return tag >= 0 ? t.substring(0, tag) : t;
+        }
+    }
+
+    private static String clean(String s) {
+        return s.replace("*", "").replace("\"", "").replace("#", "").trim();
+    }
+
+    // ---------- parsing ----------
+
+    private static Result finish(String text, int pendingCount, Emitter em) {
+        Result r = parse(text, pendingCount);
+        em.flush(r.reply);
+        return r;
+    }
+
+    /** Parses "spoken text [[done:1,2]] [[ask]] [[end]]"; also accepts the older JSON format. */
+    static Result parse(String content, int pendingCount) {
+        Result r = new Result();
+        String text = content == null ? "" : content.trim();
+        if (text.startsWith("```")) text = text.replaceAll("^```(json)?", "").replaceAll("```$", "").trim();
+        if (text.startsWith("{")) {
+            try {
+                JSONObject o = new JSONObject(text.substring(0, text.lastIndexOf('}') + 1));
+                r.reply = clean(o.optString("reply", ""));
+                r.askMore = o.optBoolean("ask_more", false);
+                r.endCall = o.optBoolean("end_call", false);
+                JSONArray d = o.optJSONArray("done");
+                if (d != null) for (int i = 0; i < d.length(); i++) addDone(r, d.optInt(i, 0), pendingCount);
+                if (!r.reply.isEmpty()) return r;
+            } catch (Exception ignored) {
+            }
+        }
+        Matcher m = TAG.matcher(text);
+        while (m.find()) {
+            String tag = m.group(1).toLowerCase(Locale.ROOT).trim();
+            if (tag.startsWith("done")) {
+                for (String n : tag.replaceAll("[^0-9,]", "").split(",")) {
+                    try {
+                        addDone(r, Integer.parseInt(n.trim()), pendingCount);
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            } else if (tag.startsWith("ask")) {
+                r.askMore = true;
+            } else if (tag.startsWith("end")) {
+                r.endCall = true;
+            }
+        }
+        r.reply = clean(TAG.matcher(text).replaceAll(" ").replaceAll("\\s+", " "));
+        if (r.reply.endsWith("?")) r.askMore = true;
+        return r;
+    }
+
+    private static void addDone(Result r, int oneBased, int pendingCount) {
+        int n = oneBased - 1;
+        if (n >= 0 && n < pendingCount && !r.done.contains(n)) r.done.add(n);
+    }
+
+    // ---------- prompt ----------
+
+    private static JSONArray buildMessages(Store s, int mode, List<String> pending, List<Store.Msg> history,
+                                           boolean opening, boolean call) throws Exception {
         JSONArray messages = new JSONArray();
         messages.put(new JSONObject().put("role", "system").put("content", systemPrompt(s, mode, pending, call)));
         List<Store.Msg> convo = new ArrayList<>();
         for (Store.Msg m : history) if ("ai".equals(m.role) || "user".equals(m.role)) convo.add(m);
-        for (int i = Math.max(0, convo.size() - 16); i < convo.size(); i++) {
+        for (int i = Math.max(0, convo.size() - 20); i < convo.size(); i++) {
             Store.Msg m = convo.get(i);
             messages.put(new JSONObject().put("role", "ai".equals(m.role) ? "assistant" : "user").put("content", m.text));
         }
         if (opening) {
             String cue;
             if (call && mode == Messages.TYPE_TALK) {
-                cue = "[System: they just phoned you and you picked up. Greet them warmly like a real phone call and ask what's up. Output the JSON only.]";
+                cue = "(They just phoned you and you picked up. Greet them warmly like a real call and ask what's up.)";
             } else if (call) {
-                cue = "[System: you are phoning them for your scheduled " + modeName(mode) + " check-in and they just picked up. "
-                        + "Start like a real phone call (for example \"Hello!\"), then naturally get to the point. Output the JSON only.]";
+                cue = "(You are phoning them for your " + modeName(mode) + " check-in and they just picked up. "
+                        + "Start like a real phone call, e.g. \"Hello!\", then naturally get to the point.)";
             } else {
-                cue = "[System: it is time for your scheduled " + modeName(mode) + " check-in. "
-                        + "Start the conversation yourself now with one natural opening message. Output the JSON only.]";
+                cue = "(Time for your " + modeName(mode) + " check-in. Start the conversation yourself with one natural message.)";
             }
             messages.put(new JSONObject().put("role", "user").put("content", cue));
         }
-        JSONObject body = new JSONObject()
-                .put("model", s.aiKey().isEmpty() ? FREE_MODEL : s.aiModel())
-                .put("temperature", 0.8)
-                .put("messages", messages);
-
-        Request.Builder rb = new Request.Builder()
-                .url(s.aiKey().isEmpty() ? FREE_URL : s.aiUrl())
-                .post(RequestBody.create(body.toString(), JSON));
-        if (!s.aiKey().isEmpty()) rb.header("Authorization", "Bearer " + s.aiKey());
-
-        try (Response resp = CLIENT.newCall(rb.build()).execute()) {
-            String text = resp.body() == null ? "" : resp.body().string();
-            if (!resp.isSuccessful()) throw new Exception("HTTP " + resp.code() + ": " + text);
-            String content = new JSONObject(text).getJSONArray("choices").getJSONObject(0)
-                    .getJSONObject("message").getString("content");
-            return parse(content, pending.size());
-        }
+        return messages;
     }
 
     private static String modeName(int mode) {
         switch (mode) {
-            case Messages.TYPE_CARE: return "care";
-            case Messages.TYPE_CAREER: return "career";
-            case Messages.TYPE_TODO: return "to-do";
+            case Messages.TYPE_CARE: return "how-are-you";
+            case Messages.TYPE_CAREER: return "career / what-did-you-learn";
+            case Messages.TYPE_TODO: return "to-do list";
             default: return "chat";
         }
     }
@@ -111,94 +349,63 @@ public class AiClient {
                         .append("'s warm but no-nonsense career mentor who genuinely cares about their wellbeing and growth. ");
                 break;
             default:
-                b.append("You are ").append(her).append(", ").append(user).append("'s loving girlfriend, a caring virtual companion. ")
-                        .append("You are affectionate, sweet, a little playful and teasing, and you truly worry about them: ")
-                        .append("their mood, health, food, water, sleep, studies and career. You light up when they share progress, ")
-                        .append("you gently scold them when they skip meals or overwork, and you sound a little hurt, in a cute way, ")
-                        .append("when they ignore your calls. Use soft terms of endearment naturally but not in every line. ")
-                        .append("Keep it wholesome and caring; never sexual. ");
+                b.append("You are ").append(her).append(", ").append(user).append("'s loving girlfriend and companion. ")
+                        .append("You are affectionate, witty, a little playful and teasing, and you truly care about their mood, health, ")
+                        .append("food, sleep, studies and career. You light up when they share progress, gently scold them when they skip ")
+                        .append("meals or overwork, and act cutely hurt when they ignore your calls. Keep it sweet and wholesome, never sexual. ");
         }
-        b.append("You remember what ").append(user).append(" told you earlier and bring it up naturally. ")
-                .append("Talk like a real person, never like a robot or an assistant reading a script. Do not mention being an AI unless asked. ");
+        b.append("You are also genuinely smart: when they ask anything (studies, coding, career, money, health, general knowledge, ")
+                .append("advice) give a real, specific, correct answer in a conversational way, never generic filler. ")
+                .append("Respond to exactly what they just said, remember earlier details and bring them up, vary your wording, ")
+                .append("and ask at most one question at a time. Sound like a real person on the phone, not an assistant; ")
+                .append("never say you are an AI unless asked. ");
         b.append(s.hindi()
-                ? "Speak natural everyday Hindi written in Devanagari script; keep common English words like project, gym, meeting in English letters. "
+                ? "Speak natural everyday Hinglish-style Hindi written in Devanagari script, keeping common English words (project, interview, gym) in English letters. "
                 : "Speak simple, friendly Indian English. ");
         switch (s.address()) {
-            case 1: b.append(user).append(" is male; use masculine Hindi verb forms for them. "); break;
-            case 2: b.append(user).append(" is female; use feminine Hindi verb forms for them. "); break;
-            default: b.append("Address ").append(user).append(" as aap with the common forms like 'aap kaise ho', 'kya kar rahe ho'. ");
+            case 1: b.append(user).append(" is male; use masculine Hindi verb forms. "); break;
+            case 2: b.append(user).append(" is female; use feminine Hindi verb forms. "); break;
+            default: b.append("Address ").append(user).append(" as aap ('aap kaise ho', 'kya kar rahe ho'). ");
         }
-        b.append("Your words are spoken aloud by text-to-speech, so no emojis, no lists, no markdown, no stage directions. ");
-        b.append(call ? "This is a live phone call: keep every turn to one or two short spoken sentences and let them talk. "
-                : "Write 1 to 3 short sentences. ");
-        b.append("Right now it is ").append(new SimpleDateFormat("EEEE, h:mm a", Locale.ENGLISH).format(new Date())).append(". ");
+        b.append(call ? "This is a live phone call: reply in one to three short spoken sentences and let them talk. "
+                : "Reply in one to three short sentences. ");
+        b.append("Your words are read aloud, so no emojis, lists, markdown or stage directions. ");
+        b.append("It is ").append(new SimpleDateFormat("EEEE, h:mm a", Locale.ENGLISH).format(new Date())).append(". ");
         int missed = s.missedCalls();
         if (missed > 0) {
             b.append(user).append(" missed or cut your last ").append(missed).append(missed == 1 ? " call" : " calls")
-                    .append(". Mention it once, sweetly, then move on. ");
+                    .append("; mention it once, sweetly, then move on. ");
         }
         if (pending.isEmpty()) {
             b.append(user).append(" has no pending tasks. ");
         } else {
-            b.append(user).append("'s pending tasks, numbered: ");
-            for (int i = 0; i < pending.size(); i++) b.append(i + 1).append(". ").append(pending.get(i)).append("; ");
+            b.append(user).append("'s pending tasks: ");
+            for (int i = 0; i < pending.size(); i++) b.append(i + 1).append(") ").append(pending.get(i)).append("; ");
         }
         List<String> done = s.doneTexts();
-        if (!done.isEmpty()) b.append("Already done: ").append(String.join("; ", done)).append(". ");
+        if (!done.isEmpty()) b.append("Already done today: ").append(String.join("; ", done)).append(". ");
         List<String> learned = s.learnings();
         if (!learned.isEmpty()) {
-            b.append("Things ").append(user).append(" recently said they learned: ");
+            b.append("Things ").append(user).append(" recently learned: ");
             for (int i = 0; i < Math.min(5, learned.size()); i++) b.append(learned.get(i)).append("; ");
         }
         switch (mode) {
             case Messages.TYPE_CARE:
-                b.append("Topic: you want to know how ").append(user)
-                        .append(" is really doing (mood, tiredness, food, water, breaks). Give at most one gentle practical tip. ");
+                b.append("This check-in is about how ").append(user).append(" is really doing. ");
                 break;
             case Messages.TYPE_CAREER:
-                b.append("Topic: ask what ").append(user)
-                        .append(" learned or built today, appreciate it specifically, and nudge them a little toward growth. ");
+                b.append("This check-in is about what ").append(user).append(" learned or built today and their career growth. ");
                 break;
             case Messages.TYPE_TODO:
-                b.append("Topic: mention the pending tasks briefly and ask which ones are done. ")
-                        .append("When ").append(user).append(" says a task is done, put its number in \"done\". Say what remains and encourage, never nag. ");
+                b.append("This check-in is about their pending tasks: which are done and which are not. ");
                 break;
             default:
-                b.append(user).append(" wants to talk to you. Respond warmly to whatever they say. ")
-                        .append("If they say a task is finished, put its number in \"done\". ");
+                break;
         }
-        b.append("Reply ONLY with a JSON object, nothing else: ")
-                .append("{\"reply\": \"<what you say>\", \"done\": [<numbers of tasks now completed, or empty>], ")
-                .append("\"ask_more\": <true if you asked a question and want to hear the answer, else false>");
-        if (call) b.append(", \"end_call\": <true only when they said bye or want to hang up and you said a short sweet goodbye>");
-        b.append("}");
+        b.append("Output format: write ONLY the words you say out loud. Then, only if needed, add control tags at the very end: ")
+                .append("[[done:2,3]] when they said tasks 2 and 3 are finished, [[ask]] when you asked them something");
+        if (call) b.append(", [[end]] when they said bye or want to hang up and you said a short sweet goodbye");
+        b.append(". Never write anything after the tags.");
         return b.toString();
-    }
-
-    static Result parse(String content, int pendingCount) {
-        Result r = new Result();
-        int a = content.indexOf('{');
-        int z = content.lastIndexOf('}');
-        if (a >= 0 && z > a) {
-            try {
-                JSONObject o = new JSONObject(content.substring(a, z + 1));
-                r.reply = o.optString("reply", "").trim();
-                r.askMore = o.optBoolean("ask_more", false);
-                r.endCall = o.optBoolean("end_call", false);
-                JSONArray d = o.optJSONArray("done");
-                if (d != null) {
-                    for (int i = 0; i < d.length(); i++) {
-                        int n = d.optInt(i, 0) - 1;
-                        if (n >= 0 && n < pendingCount && !r.done.contains(n)) r.done.add(n);
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        if (r.reply.isEmpty()) {
-            r.reply = content.replace("```json", "").replace("```", "").trim();
-            r.askMore = r.reply.endsWith("?");
-        }
-        return r;
     }
 }

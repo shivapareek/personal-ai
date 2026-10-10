@@ -39,10 +39,15 @@ public class EdgeTts {
             .build();
 
     public static byte[] synthesize(String text, String voice) throws Exception {
-        return synthesize(text, voice, 0, false);
+        return synthesize(text, voice, 0);
     }
 
-    private static byte[] synthesize(String text, String voice, long clockSkewSec, boolean retried) throws Exception {
+    /** @param ratePct speaking speed change in percent, e.g. 15 for 15% faster. */
+    public static byte[] synthesize(String text, String voice, int ratePct) throws Exception {
+        return synthesize(text, voice, ratePct, 0, false);
+    }
+
+    private static byte[] synthesize(String text, String voice, int ratePct, long clockSkewSec, boolean retried) throws Exception {
         String url = WSS + "?TrustedClientToken=" + TOKEN
                 + "&Sec-MS-GEC=" + secMsGec(clockSkewSec)
                 + "&Sec-MS-GEC-Version=1-" + CHROME_FULL
@@ -69,7 +74,7 @@ public class EdgeTts {
             @Override
             public void onOpen(WebSocket webSocket, Response response) {
                 webSocket.send(configMessage());
-                webSocket.send(ssmlMessage(text, voice));
+                webSocket.send(ssmlMessage(text, voice, ratePct));
             }
 
             @Override
@@ -118,7 +123,7 @@ public class EdgeTts {
             // 403 usually means our clock differs from the server's: retry once with the server's time.
             if (httpCode.get() == 403 && !retried && serverDate.get() != null) {
                 long serverSec = parseHttpDate(serverDate.get());
-                if (serverSec > 0) return synthesize(text, voice, serverSec - System.currentTimeMillis() / 1000, true);
+                if (serverSec > 0) return synthesize(text, voice, ratePct, serverSec - System.currentTimeMillis() / 1000, true);
             }
             throw new Exception("Edge TTS failed (HTTP " + httpCode.get() + "): " + error.get().getMessage(), error.get());
         }
@@ -150,9 +155,10 @@ public class EdgeTts {
                 + "\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}\r\n";
     }
 
-    private static String ssmlMessage(String text, String voice) {
+    private static String ssmlMessage(String text, String voice, int ratePct) {
+        String rate = (ratePct >= 0 ? "+" : "") + ratePct + "%";
         String ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>"
-                + "<voice name='" + voice + "'><prosody pitch='+0Hz' rate='+0%' volume='+0%'>"
+                + "<voice name='" + voice + "'><prosody pitch='+0Hz' rate='" + rate + "' volume='+0%'>"
                 + escape(text) + "</prosody></voice></speak>";
         return "X-RequestId:" + uuid() + "\r\n"
                 + "Content-Type:application/ssml+xml\r\n"

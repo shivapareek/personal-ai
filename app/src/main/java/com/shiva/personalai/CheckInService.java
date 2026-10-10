@@ -93,6 +93,7 @@ public class CheckInService extends Service {
     private int mode;
     private int turn;
     private boolean typed;
+    private boolean aiErrorNoted;
     private List<String> pending = new ArrayList<>();
 
     // call state
@@ -105,6 +106,7 @@ public class CheckInService extends Service {
     private long callStart;
     private Ringtone ringtone;
     private Vibrator vibrator;
+    private PowerManager.WakeLock screenLock;
 
     private final Runnable ringTimeout = () -> missed(false, false);
 
@@ -305,9 +307,12 @@ public class CheckInService extends Service {
         store.setCallState("ringing");
         final int my = convo;
         prepareOpening(my, type, false);
+        wakeScreen();
         startRinging();
         postIncomingCallNotification();
-        if (Foreground.visible()) openCallScreen(null);
+        // With "Display over other apps" Android lets us open the call screen from the background,
+        // which turns the screen on and shows over the lock screen on every phone brand.
+        if (Foreground.visible() || Settings.canDrawOverlays(this)) openCallScreen(null);
         main.postDelayed(ringTimeout, RING_MS);
         updateStatusNotification();
     }
@@ -318,10 +323,16 @@ public class CheckInService extends Service {
         final List<String> pend = new ArrayList<>(pending);
         new Thread(() -> {
             String text = null;
+            Exception failure = null;
             try {
                 text = AiClient.chat(store, userCalled ? Messages.TYPE_TALK : type, pend, history, true, true).reply;
-            } catch (Exception ignored) {
+            } catch (Exception ex) {
+                failure = ex;
             }
+            final Exception err = failure;
+            if (err != null) main.post(() -> {
+                if (my == convo) noteAiError(err);
+            });
             if (text == null || text.trim().isEmpty()) {
                 text = userCalled ? Messages.userCalledOpening(store) : Messages.callOpening(type, store);
             }
@@ -522,7 +533,25 @@ public class CheckInService extends Service {
         }
     }
 
+    /** Turns the display on for an incoming call even if the full-screen intent is blocked by the phone. */
+    @SuppressWarnings("deprecation")
+    private void wakeScreen() {
+        try {
+            PowerManager pm = getSystemService(PowerManager.class);
+            if (screenLock == null) {
+                screenLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK
+                        | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "personalai:ring");
+            }
+            if (!screenLock.isHeld()) screenLock.acquire(RING_MS + 5000);
+        } catch (Exception ignored) {
+        }
+    }
+
     private void stopRinging() {
+        try {
+            if (screenLock != null && screenLock.isHeld()) screenLock.release();
+        } catch (Exception ignored) {
+        }
         try {
             if (ringtone != null) ringtone.stop();
         } catch (Exception ignored) {
@@ -557,6 +586,7 @@ public class CheckInService extends Service {
         mode = m;
         turn = 0;
         typed = typedInput;
+        aiErrorNoted = false;
         pending = store.pendingTexts();
         acquireWakeLock();
         touch();
@@ -617,20 +647,24 @@ public class CheckInService extends Service {
         store.setState("speaking");
         final int my = convo;
         speaker.speak(text, () -> {
-            if (my != convo) return;
-            if (inCall) {
-                if (endCallAfter) {
-                    hangUp();
-                } else if (store.muted() || !canListen()) {
-                    store.setState("idle");
-                } else {
-                    listen();
-                }
-                return;
-            }
-            if (thenListen && !typed && turn < MAX_TURNS && canListen()) listen();
-            else finishConversation();
+            if (my == convo) afterSpeech(thenListen, endCallAfter);
         });
+    }
+
+    /** What happens once she finished talking: keep listening on a call, otherwise maybe listen once more. */
+    private void afterSpeech(boolean thenListen, boolean endCallAfter) {
+        if (inCall) {
+            if (endCallAfter) {
+                hangUp();
+            } else if (store.muted() || !canListen()) {
+                store.setState("idle");
+            } else {
+                listen();
+            }
+            return;
+        }
+        if (thenListen && !typed && turn < MAX_TURNS && canListen()) listen();
+        else finishConversation();
     }
 
     private boolean canListen() {
@@ -689,7 +723,8 @@ public class CheckInService extends Service {
             i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, store.hindi() ? "hi-IN" : "en-IN");
             i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
             i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
-            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L);
+            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 900L);
+            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 700L);
             recognizer.startListening(i);
         } catch (Exception e) {
             destroyRecognizer();
@@ -709,20 +744,55 @@ public class CheckInService extends Service {
         final boolean call = inCall;
         final List<Store.Msg> history = store.messages();
         final List<String> pend = new ArrayList<>(pending);
+        final boolean[] talking = {false};
+        speaker.begin();
+        // A slow AI should not feel like dead air: she says "hmm…" while she thinks.
+        main.postDelayed(() -> {
+            if (my != convo || talking[0]) return;
+            talking[0] = true;
+            store.setState("speaking");
+            speaker.add(Messages.filler(store));
+        }, 1300);
         new Thread(() -> {
             try {
-                AiClient.Result r = AiClient.chat(store, myMode, pend, history, false, call);
+                AiClient.Result r = AiClient.stream(store, myMode, pend, history, false, call, sentence -> main.post(() -> {
+                    if (my != convo) return;
+                    talking[0] = true;
+                    touch();
+                    store.setState("speaking");
+                    speaker.add(sentence);
+                }));
                 main.post(() -> {
                     if (my != convo) return;
                     markDone(r.done);
-                    say(r.reply, r.askMore, inCall && r.endCall);
+                    store.setLastAi(r.provider + " · " + String.format(Locale.US, "%.1f s", r.millis / 1000f));
+                    store.addMessage("ai", r.reply);
+                    if (!inCall && !Foreground.visible() && mode != Messages.TYPE_TALK) postMessageNotification(r.reply, r.askMore);
+                    final boolean listenAgain = r.askMore;
+                    final boolean end = inCall && r.endCall;
+                    speaker.end(() -> {
+                        if (my == convo) afterSpeech(listenAgain, end);
+                    });
                 });
             } catch (Exception e) {
                 main.post(() -> {
-                    if (my == convo) localReply(text);
+                    if (my != convo) return;
+                    speaker.stop();
+                    noteAiError(e);
+                    localReply(text);
                 });
             }
         }).start();
+    }
+
+    /** Makes a failing AI visible in the chat instead of silently using canned lines. Once per conversation. */
+    private void noteAiError(Exception e) {
+        if (aiErrorNoted) return;
+        aiErrorNoted = true;
+        String why = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        if (why.length() > 90) why = why.substring(0, 90) + "…";
+        store.setLastAi("Failed · " + why);
+        store.addMessage("system", "AI did not answer (" + why + "). Using a basic reply.");
     }
 
     /** Reply without AI: simple parsing + fixed sentences. */
